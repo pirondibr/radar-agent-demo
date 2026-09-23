@@ -15,6 +15,13 @@ import requests
 MP_API = "https://api.mercadopago.com"
 PRO_PRICE = float(os.environ.get("PRO_PRICE_BRL", "99").strip() or "99")
 PRO_TITLE = os.environ.get("PRO_TITLE", "Radar Pro - Analise profunda de canal")
+EXTRAS_TITLE = os.environ.get(
+    "EXTRAS_TITLE",
+    "Radar - Canais extra (Meta, LinkedIn, Instagram, YouTube)",
+)
+EXTRAS_PRICE = float(
+    os.environ.get("EXTRAS_PRICE_BRL", os.environ.get("PRO_PRICE_BRL", "99")).strip() or "99"
+)
 
 ORDERS_DIR = Path(__file__).resolve().parent / "data" / "orders"
 ORDERS_DIR.mkdir(parents=True, exist_ok=True)
@@ -81,8 +88,14 @@ def create_pro_checkout(
     company: str = "",
     slug: str = "",
     job_id: str = "",
+    product: str = "deep_channel",
 ) -> dict[str, Any]:
-    """Cria preference Checkout Pro com PIX + cartão e ordem local pendente."""
+    """Cria preference Checkout Pro com PIX + cartão.
+
+    product:
+      - deep_channel: analise Pro de um canal (entrega manual 24h)
+      - extras_pack: desbloqueia Meta/LinkedIn/IG/YouTube no chat
+    """
     token = mp_access_token()
     if not token:
         raise RuntimeError(
@@ -92,27 +105,39 @@ def create_pro_checkout(
 
     order_id = uuid.uuid4().hex[:16]
     base = public_base_url()
-    channel_label = channel or "canal"
-    title = f"{PRO_TITLE} ({channel_label})"
+    product = (product or "deep_channel").strip().lower()
+    if product == "extras_pack":
+        channel_label = "canais-extra"
+        title = EXTRAS_TITLE
+        price = EXTRAS_PRICE
+        description = (
+            f"Canais extra para {company or slug or 'cliente'}: "
+            "Meta Ads, LinkedIn, Instagram e YouTube"
+        )
+    else:
+        product = "deep_channel"
+        channel_label = channel or "canal"
+        title = f"{PRO_TITLE} ({channel_label})"
+        price = PRO_PRICE
+        description = (
+            f"Analise Pro do canal {channel_label} "
+            f"para {company or slug or 'cliente'}"
+        )
 
     preference_body: dict[str, Any] = {
         "items": [
             {
-                "id": f"radar-pro-{channel_label}",
+                "id": f"radar-{product}-{channel_label}",
                 "title": title[:120],
-                "description": (
-                    f"Analise Pro do canal {channel_label} "
-                    f"para {company or slug or 'cliente'}"
-                )[:256],
+                "description": description[:256],
                 "quantity": 1,
                 "currency_id": "BRL",
-                "unit_price": PRO_PRICE,
+                "unit_price": price,
             }
         ],
         "external_reference": order_id,
         "statement_descriptor": "RADAR PRO",
         "binary_mode": True,
-        # Checkout Pro ja oferece PIX + cartao (e outros). Excluimos so boleto/ticket para simplificar.
         "payment_methods": {
             "excluded_payment_types": [
                 {"id": "ticket"},
@@ -129,11 +154,11 @@ def create_pro_checkout(
         "notification_url": f"{base}/api/webhooks/mercadopago?source_news=webhooks",
         "metadata": {
             "order_id": order_id,
-            "channel": channel,
+            "channel": channel_label if product == "extras_pack" else channel,
             "company": company,
             "slug": slug,
             "job_id": job_id,
-            "product": "radar_pro_deep_channel",
+            "product": f"radar_{product}",
         },
     }
 
@@ -161,11 +186,11 @@ def create_pro_checkout(
         "created_at": time.time(),
         "status": "pending",
         "mp_status": "",
-        "channel": channel,
+        "channel": channel_label if product == "extras_pack" else channel,
         "company": company,
         "slug": slug,
         "job_id": job_id,
-        "amount": PRO_PRICE,
+        "amount": price,
         "currency": "BRL",
         "preference_id": pref.get("id"),
         "init_point": init_point,
@@ -175,6 +200,7 @@ def create_pro_checkout(
         "contact_type": "",
         "contact": "",
         "sandbox": token_is_test,
+        "product": product,
     }
     save_order(order)
     return {
@@ -183,8 +209,9 @@ def create_pro_checkout(
         "init_point": order["init_point"],
         "sandbox_init_point": order["sandbox_init_point"],
         "public_key": mp_public_key(),
-        "amount": PRO_PRICE,
-        "channel": channel,
+        "amount": price,
+        "channel": order["channel"],
+        "product": product,
     }
 
 

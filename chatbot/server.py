@@ -24,6 +24,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 from parse_input import ParsedInput, parse_user_message
 from pipeline import EXTRA_STEP_DEFS, STEP_DEFS, run_extras_pipeline, run_pipeline
 from mercadopago_client import (
+    EXTRAS_PRICE,
     PRO_PRICE,
     apply_payment_to_order,
     create_pro_checkout,
@@ -58,7 +59,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 
 REQUIRED_LIVE_KEYS = (
     "OPENROUTER_API_KEY",
@@ -199,6 +200,7 @@ def hello():
         "keys_ready": keys,
         "payments_ready": mp_configured(),
         "pro_price": PRO_PRICE,
+        "extras_price": EXTRAS_PRICE,
         "version": APP_VERSION,
     })
 
@@ -310,6 +312,7 @@ def checkout():
             company=(data.get("company") or "").strip(),
             slug=(data.get("slug") or "").strip(),
             job_id=(data.get("job_id") or "").strip(),
+            product=(data.get("product") or "deep_channel").strip().lower(),
         )
         return jsonify({"ok": True, **result})
     except Exception as e:

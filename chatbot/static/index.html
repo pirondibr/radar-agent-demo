@@ -162,7 +162,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -411,6 +411,7 @@ function startPaidCapture(channel) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
      channel,
+     product: 'deep_channel',
      company: analysisCtx.company || '',
      slug: analysisCtx.slug || '',
      job_id: analysisCtx.job_id || '',
@@ -576,6 +577,7 @@ function analysisBlocks(channel, analysisTitle, insight, proHook) {
 }
 
 function renderProFinale() {
+ const price = (window.__extrasPrice || window.__proPrice || 99);
  const node = append(`
  <div class="q-block reveal">
  <div class="bot-label"><span class="dot"></span>Radar Agent</div>
@@ -583,11 +585,11 @@ function renderProFinale() {
  <div class="answer-card ac-finale">
  <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Canais extra</div></div>
  <div class="hero-num">
- <div class="finale-price" style="font-size:22px">Meta · LinkedIn · IG · YT</div>
- <div class="hero-sub">mesma lógica do gratuito, etapa a etapa (TikTok em breve)</div>
+ <div class="finale-price">R$ ${esc(String(price))}</div>
+ <div class="hero-sub">Meta · LinkedIn · Instagram · YouTube (TikTok em breve)</div>
  </div>
  <div class="ac-text">
- Vamos rankear anúncios Meta e LinkedIn e presença em Instagram e YouTube entre você e os concorrentes Alto.
+ Pague com <strong>PIX ou cartão</strong> via Mercado Pago e liberamos os rankings dos canais extra no chat.
  Cada canal também terá oferta Pro de análise profunda.
  </div>
  <div class="channel-chips">
@@ -598,13 +600,103 @@ function renderProFinale() {
  </div>
  <div class="finale-cta">
  <div class="pro-cta-text" style="max-width:380px">
- Clique para rodar os canais extra agora (MVP — sem cobrança nesta etapa).
+ Clique para pagar e rodar os canais extra agora.
  </div>
- <button type="button" class="finale-btn" data-extras-cta>Analisar canais extra</button>
+ <button type="button" class="finale-btn" data-extras-cta>Pagar e analisar canais extra</button>
  </div>
+ <div class="hint" data-extras-hint></div>
  </div>
  </div>`);
- node.querySelector('[data-extras-cta]').addEventListener('click', () => startExtrasJob());
+ const btn = node.querySelector('[data-extras-cta]');
+ btn.addEventListener('click', () => startExtrasCheckout(node, btn));
+}
+
+async function startExtrasCheckout(root, btn) {
+ if (busy) return;
+ if (btn.dataset.mode === 'verify') {
+  return; // handled by verify handler
+ }
+ if (!analysisCtx.slug && !analysisCtx.company) {
+  addBotBubble('Rode uma análise gratuita primeiro (URL ou **demo**) para eu ter o cliente dos canais extra.');
+  return;
+ }
+ const hint = root.querySelector('[data-extras-hint]');
+ if (btn) btn.disabled = true;
+ if (hint) hint.textContent = 'Gerando checkout Mercado Pago...';
+ let orderId = '';
+ let pollTimer = null;
+ let started = false;
+
+ async function checkPaidAndRun() {
+  if (!orderId || started) return false;
+  try {
+   const res = await fetch('/api/checkout/' + encodeURIComponent(orderId));
+   const data = await res.json();
+   if (data.paid) {
+    started = true;
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (hint) hint.textContent = 'Pagamento confirmado. Iniciando canais extra...';
+    if (btn) btn.disabled = true;
+    addBotBubble('Pagamento dos **canais extra** confirmado. Vou liberar Meta, LinkedIn, Instagram e YouTube.');
+    startExtrasJob();
+    return true;
+   }
+   if (hint) hint.textContent = data.mp_status
+    ? ('Status Mercado Pago: ' + data.mp_status)
+    : 'Aguardando confirmação do pagamento...';
+  } catch (e) {
+   if (hint) hint.textContent = 'Não consegui verificar agora. Tente de novo.';
+  }
+  return false;
+ }
+
+ try {
+  const res = await fetch('/api/checkout', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({
+    product: 'extras_pack',
+    channel: 'canais-extra',
+    company: analysisCtx.company || '',
+    slug: analysisCtx.slug || '',
+    job_id: analysisCtx.job_id || '',
+   }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+   if (hint) hint.textContent = data.error || 'Falha ao criar pagamento';
+   if (btn) btn.disabled = false;
+   return;
+  }
+  orderId = data.order_id;
+  const url = data.init_point || data.sandbox_init_point;
+  if (!url) {
+   if (hint) hint.textContent = 'Checkout sem URL de pagamento.';
+   if (btn) btn.disabled = false;
+   return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+  if (hint) hint.textContent = 'Janela do Mercado Pago aberta (PIX ou cartão). Depois clique em verificar se não avançar sozinho.';
+  if (btn) {
+   btn.disabled = false;
+   btn.dataset.mode = 'verify';
+   btn.textContent = 'Já paguei — verificar';
+   btn.addEventListener('click', (ev) => {
+    ev.stopImmediatePropagation();
+    checkPaidAndRun();
+   });
+  }
+  pollTimer = setInterval(() => { checkPaidAndRun(); }, 4000);
+  window.addEventListener('message', function onRet(ev) {
+   const d = ev && ev.data;
+   if (!d || d.type !== 'mp_return') return;
+   if (d.order_id) orderId = d.order_id;
+   checkPaidAndRun();
+  });
+ } catch (e) {
+  if (hint) hint.textContent = e.message;
+  if (btn) btn.disabled = false;
+ }
 }
 
 function renderCountChannel(section, title, colorVar, agentLetter, labelCls, agentCls, cardCls, stageLabel, proOpts) {
@@ -858,6 +950,8 @@ async function boot() {
  const data = await res.json();
  stepDefs = data.steps || [];
  addBotBubble(data.greeting, true);
+ window.__proPrice = data.pro_price || 99;
+ window.__extrasPrice = data.extras_price || data.pro_price || 99;
  setTimeout(() => {
  const askNode = addBotBubble(data.ask, true);
  const hint = document.createElement('div');
