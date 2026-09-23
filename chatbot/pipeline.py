@@ -327,6 +327,21 @@ def run_live_pipeline(
     emit: EmitFn,
     set_step: EmitFn,
 ) -> dict:
+    import os
+
+    required = (
+        "OPENROUTER_API_KEY",
+        "SCRAPINGBEE_API_KEY",
+        "DATAFORSEO_USER",
+        "DATAFORSEO_PASS",
+        "SEMRUSH_API_KEY",
+    )
+    missing = [k for k in required if not os.environ.get(k, "").strip()]
+    if missing:
+        raise RuntimeError(
+            "API keys ausentes para live: " + ", ".join(missing)
+        )
+
     if not FINAL_DIR.exists():
         raise FileNotFoundError(f"Final 09 nao encontrado: {FINAL_DIR}")
 

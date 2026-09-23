@@ -27,8 +27,44 @@ from pipeline import STEP_DEFS, run_pipeline
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
 
-# Public demo host: only Chatguru sample data (no live scrapes)
+
+def _load_dotenv() -> None:
+    """Load Radar/.env into os.environ if present (local + optional Render secret file)."""
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.exists():
+        return
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+_load_dotenv()
+
+# Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
+APP_VERSION = "1.1.0"
+
+REQUIRED_LIVE_KEYS = (
+    "OPENROUTER_API_KEY",
+    "SCRAPINGBEE_API_KEY",
+    "DATAFORSEO_USER",
+    "DATAFORSEO_PASS",
+    "SEMRUSH_API_KEY",
+)
+
+
+def _live_keys_ready() -> dict[str, bool]:
+    return {k: bool(os.environ.get(k, "").strip()) for k in REQUIRED_LIVE_KEYS}
+
+
+def _missing_live_keys() -> list[str]:
+    return [k for k, ok in _live_keys_ready().items() if not ok]
 
 
 @dataclass
@@ -94,31 +130,40 @@ def index():
 
 @app.get("/api/hello")
 def hello():
+    keys = _live_keys_ready()
+    live_ok = (not DEMO_ONLY) and all(keys.values())
     if DEMO_ONLY:
         greeting = (
-            "Ola! Eu sou o **Radar Agent** (demo publica **v1.0.9**). "
+            f"Ola! Eu sou o **Radar Agent** (demo publica **v{APP_VERSION}**). "
             "Aqui voce testa o fluxo completo com o exemplo **Chatguru**, "
             "sem scrapes ao vivo."
         )
         ask = (
             "Digite **demo** para ver Briefing, Concorrentes, Google Ads, SEO e Marca. "
-            "Outras URLs ainda nao rodam neste ambiente (analise ao vivo vem na versao completa)."
+            "Outras URLs ainda nao rodam neste ambiente."
         )
         examples = ["demo", "https://chatguru.com.br/"]
     else:
         greeting = (
-            "Ola! Eu sou o **Radar Agent**, seu consultor de estrategia em marketing digital. "
-            "Analiso a concorrencia e os canais de marketing da sua empresa."
+            f"Ola! Eu sou o **Radar Agent** (**v{APP_VERSION}**). "
+            "Analiso a concorrencia e os canais de marketing da sua empresa ao vivo."
         )
-        ask = (
-            "Para comecar, me diga a **empresa** (URL ou nome). "
-            "Se quiser, indique de **1 a 3 concorrentes**. Nao e obrigatorio, "
-            "a IA pesquisa automaticamente."
-        )
+        if live_ok:
+            ask = (
+                "Envie a **URL do site** (ex: https://www.mendesortega.com.br/). "
+                "Opcional: 1 a 3 concorrentes. Digite **demo** para o exemplo Chatguru (sem scrape)."
+            )
+        else:
+            missing = ", ".join(_missing_live_keys())
+            ask = (
+                "Live ainda sem todas as API keys no servidor "
+                f"(faltam: {missing}). Digite **demo** para o exemplo Chatguru, "
+                "ou configure as keys no Render Environment."
+            )
         examples = [
-            "https://chatguru.com.br/",
+            "https://www.mendesortega.com.br/",
             "demo",
-            "minhaempresa.com.br concorrentes: blip, huggy",
+            "https://chatguru.com.br/",
         ]
     return jsonify({
         "greeting": greeting,
@@ -126,7 +171,9 @@ def hello():
         "examples": examples,
         "steps": STEP_DEFS,
         "demo_only": DEMO_ONLY,
-        "version": "1.0.9",
+        "live_ready": live_ok,
+        "keys_ready": keys,
+        "version": APP_VERSION,
     })
 
 
@@ -145,14 +192,13 @@ def chat():
         }), 400
 
     if DEMO_ONLY:
-        # Public demo: only seeded Chatguru — never silently remap other URLs
+        # Public sample-only: never silently remap other URLs
         is_demo_request = bool(parsed.demo) or (parsed.slug or "").lower() == "chatguru"
         if not is_demo_request:
             return jsonify({
                 "error": (
-                    "Na demo publica so o exemplo **Chatguru** esta disponivel. "
-                    "Digite **demo** para ver o fluxo. "
-                    "Analise ao vivo de outros sites ainda nao roda neste ambiente."
+                    "Neste modo so o exemplo **Chatguru** esta disponivel. "
+                    "Digite **demo** ou configure DEMO_ONLY=0 + API keys para live."
                 ),
                 "parsed": {
                     "company": parsed.company,
@@ -167,6 +213,18 @@ def chat():
         parsed.company = "Chatguru (demo)"
         parsed.slug = "chatguru"
         parsed.url = parsed.url or "https://chatguru.com.br/"
+    elif not parsed.demo:
+        missing = _missing_live_keys()
+        if missing:
+            return jsonify({
+                "error": (
+                    "Analise ao vivo precisa das API keys no Render Environment: "
+                    + ", ".join(missing)
+                    + ". Enquanto isso, digite **demo** para o exemplo Chatguru."
+                ),
+                "missing_keys": missing,
+                "demo_only": False,
+            }), 503
 
     job_id = uuid.uuid4().hex[:12]
     job = Job(job_id=job_id, parsed=parsed)
@@ -266,5 +324,5 @@ def _sse(payload: dict) -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8766"))
-    print(f"Radar Agent Chatbot -> http://127.0.0.1:{port}  DEMO_ONLY={DEMO_ONLY}")
+    print(f"Radar Agent Chatbot -> http://127.0.0.1:{port}  DEMO_ONLY={DEMO_ONLY} live_keys={_live_keys_ready()}")
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

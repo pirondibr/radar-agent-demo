@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Caminhos centralizados do Radar 09 2026.
+"""Caminhos centralizados do Radar 09 2026 (Windows local + Render Linux).
 
 Scripts em Radar/scripts/
+Libs SEO/concorrentes em Radar/scripts/vendor/
 Outputs em Radar/outputs/{entender,concorrentes,metricas}/
-Libs Spy (SEO/LLM/find_concorrentes) permanecem referenciadas por caminho absoluto.
 """
 
 from __future__ import annotations
@@ -14,29 +14,29 @@ from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 RADAR_ROOT = SCRIPTS_DIR.parent
+VENDOR_DIR = SCRIPTS_DIR / "vendor"
 
-SPY_ROOT = Path(r"C:\Users\Usuario\Desktop\Spy versao mes 09")
-BASE_DIR = SPY_ROOT / "Lista automatica vertical 1"
-CONC_DIR = BASE_DIR / "Concorrentes"
-MVP_DIR = SPY_ROOT / "Mvp nova sequencia para Local"
+# Compat: codigo legado espera CONC_DIR / BASE_DIR / MVP_DIR
+CONC_DIR = VENDOR_DIR
+BASE_DIR = VENDOR_DIR
+MVP_DIR = VENDOR_DIR
+FORMULA_DIR = VENDOR_DIR / "formula"
 
 PIPELINE_OUTPUT_DIR = RADAR_ROOT / "outputs" / "entender"
 OUT_DIR = RADAR_ROOT / "outputs"
 OUT_CONCORRENTES = RADAR_ROOT / "outputs" / "concorrentes"
 OUT_METRICAS = RADAR_ROOT / "outputs" / "metricas"
-FORMULA_DIR = Path(r"C:\Users\Usuario\Desktop\Radar Concorrencia\Formula de potencial de canais")
 
 # Compat com codigo antigo que ainda espera FINAL_DIR = pasta dos runners
 FINAL_DIR = SCRIPTS_DIR
 
 SEO_PIPELINE_CANDIDATES = (
-    BASE_DIR / "seo_pipeline.py",
-    BASE_DIR / "seo_pipeline Antigo não usar.py",
+    VENDOR_DIR / "seo_pipeline.py",
 )
 
 
 def ensure_output_dirs() -> None:
-    for d in (PIPELINE_OUTPUT_DIR, OUT_CONCORRENTES, OUT_METRICAS):
+    for d in (PIPELINE_OUTPUT_DIR, OUT_CONCORRENTES, OUT_METRICAS, VENDOR_DIR / "output"):
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -44,15 +44,13 @@ def setup_workspace() -> Path:
     """Prioriza scripts do Radar no sys.path e registra seo_pipeline."""
     ensure_output_dirs()
 
-    # Radar scripts primeiro (ganha do Concorrentes/workspace_paths.py)
+    # Radar scripts primeiro (ganha de qualquer workspace_paths vendored)
     if str(SCRIPTS_DIR) in sys.path:
         sys.path.remove(str(SCRIPTS_DIR))
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-    if str(CONC_DIR) not in sys.path:
-        sys.path.insert(1, str(CONC_DIR))
-    if str(BASE_DIR) not in sys.path:
-        sys.path.insert(2, str(BASE_DIR))
+    if str(VENDOR_DIR) not in sys.path:
+        sys.path.insert(1, str(VENDOR_DIR))
 
     if "seo_pipeline" not in sys.modules:
         loaded = False

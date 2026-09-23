@@ -49,7 +49,7 @@ try:
     from workspace_paths import PIPELINE_OUTPUT_DIR as OUTPUT_DIR, FORMULA_DIR  # noqa: E402
 except Exception:
     OUTPUT_DIR = BASE_DIR.parent / "outputs" / "entender"
-    FORMULA_DIR = Path(r"C:\Users\Usuario\Desktop\Radar Concorrencia\Formula de potencial de canais")
+    FORMULA_DIR = BASE_DIR / "vendor" / "formula"
 DEFAULT_INPUT_FILE = BASE_DIR / "input.txt"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
