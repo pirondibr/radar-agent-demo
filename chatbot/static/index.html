@@ -134,12 +134,18 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .pro-cta-btn{border:0;border-radius:10px;padding:11px 18px;background:linear-gradient(135deg,#b45309,#d97706);color:#fff;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 2px 10px rgba(180,83,9,.25);opacity:.85}
 .pro-cta-btn:hover{opacity:1}
 .pro-toast{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600;display:none}.pro-toast.show{display:block}
+.pay-choice{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.pay-choice button{border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:var(--text)}
+.pay-choice button:hover{border-color:var(--accent);background:var(--surface-2)}
+.pay-form{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.pay-form input{flex:1;min-width:180px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px}
+.pay-form button{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
 @media(max-width:640px){.main{padding:16px 12px 130px}.dtable{font-size:11px}.hero-val{font-size:28px}.top-meta,.top-sep,.top-status{display:none}.top-version{font-size:9px;padding:2px 6px}.comp-row{flex-wrap:wrap}.pro-cta{flex-direction:column;align-items:stretch}.pro-cta-btn{width:100%;text-align:center}}
 </style>
 </head>
 <body>
 <div class="top">
- <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar Agent</div><span class="top-version" id="appVersion">v1.1.0</span></div>
+ <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar Agent</div><span class="top-version" id="appVersion">v1.2.0</span></div>
  <div class="top-sep"></div>
  <div class="top-status" id="topStatus">Pronto</div>
  <div class="top-right"><div class="top-meta" id="topMeta">MVP Ads + SEO + Marca</div></div>
@@ -156,7 +162,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -168,6 +174,7 @@ document.title = 'Radar Agent v' + APP_VERSION + ' | Consultor de Marketing';
 
 let busy = false;
 let stepDefs = [];
+let analysisCtx = { company: '', slug: '', job_id: '', demo: false };
 
 function esc(s) {
  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -308,13 +315,113 @@ const PRO_QUESTIONS_BRAND = [
  'Por que minha empresa não está crescendo?',
 ];
 
-function showProToast(root) {
- const toast = root.querySelector('.pro-toast');
- if (!toast) return;
- toast.textContent = 'Disponível na versão Pro (R$ 99). Pagamento em breve.';
- toast.classList.add('show');
- clearTimeout(root._proToastTimer);
- root._proToastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+const PRO_QUESTIONS_META = [
+ 'Quais criativos Meta do líder eu deveria testar?',
+ 'Qual formato de anúncio Meta performa melhor no meu nicho?',
+];
+
+const PRO_QUESTIONS_LINKEDIN = [
+ 'Quais mensagens B2B o líder usa no LinkedIn Ads?',
+ 'Como o concorrente estrutura campanhas LinkedIn?',
+];
+
+const PRO_QUESTIONS_IG = [
+ 'Qual ritmo de conteúdo gera crescimento de seguidores?',
+ 'O que o líder posta no Instagram que eu ainda não faço?',
+];
+
+const PRO_QUESTIONS_YT = [
+ 'Como o líder usa YouTube para autoridade de marca?',
+ 'Quais formatos de vídeo geram inscritos no meu nicho?',
+];
+
+function startPaidCapture(channel) {
+ const channelLabel = ({
+  ads: 'Google Ads', seo: 'SEO', brand: 'Marca',
+  meta: 'Meta Ads', linkedin: 'LinkedIn', instagram: 'Instagram', youtube: 'YouTube',
+ })[channel] || channel;
+
+ addBotBubble(`Pagamento simulado com sucesso (MVP). Vamos liberar a **análise Pro de ${channelLabel}**.`);
+
+ const node = append(`
+  <div class="q-block reveal">
+   <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+   <div class="q-bubble">
+    Sua análise está sendo feita. No máximo em <strong>24 horas</strong> você vai receber ela no seu e-mail ou WhatsApp.
+    Qual você prefere informar?
+   </div>
+   <div class="pay-choice">
+    <button type="button" data-contact-type="email">E-mail</button>
+    <button type="button" data-contact-type="whatsapp">WhatsApp</button>
+   </div>
+   <div class="pay-form" hidden>
+    <input type="text" data-contact-input placeholder="" />
+    <button type="button" data-contact-send>Enviar</button>
+   </div>
+  </div>`);
+
+ let chosenType = '';
+ const form = node.querySelector('.pay-form');
+ const inp = node.querySelector('[data-contact-input]');
+ const send = node.querySelector('[data-contact-send]');
+
+ node.querySelectorAll('[data-contact-type]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+   chosenType = btn.getAttribute('data-contact-type');
+   form.hidden = false;
+   inp.placeholder = chosenType === 'email' ? 'seu@email.com' : '11999999999';
+   inp.focus();
+  });
+ });
+
+ async function submitLead() {
+  const contact = (inp.value || '').trim();
+  if (!chosenType) {
+   addBotBubble('Escolha e-mail ou WhatsApp primeiro.');
+   return;
+  }
+  if (contact.length < 5) {
+   addBotBubble('Informe um contato válido para eu registrar sua análise Pro.');
+   return;
+  }
+  addUserBubble(contact);
+  send.disabled = true;
+  try {
+   const res = await fetch('/api/leads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+     offer: 'deep_channel',
+     channel,
+     contact_type: chosenType,
+     contact,
+     company: analysisCtx.company || '',
+     slug: analysisCtx.slug || '',
+     job_id: analysisCtx.job_id || '',
+    }),
+   });
+   const data = await res.json();
+   if (!res.ok) {
+    addBotBubble(data.error || 'Não consegui salvar o contato.');
+    send.disabled = false;
+    return;
+   }
+   addBotBubble(
+    `Perfeito. Registrei seu ${chosenType} (**${contact}**) para a análise Pro de **${channelLabel}**. `
+    + 'Em até 24h você recebe o relatório. Por enquanto a entrega é manual — o pagamento real vem na próxima etapa.'
+   );
+   form.hidden = true;
+   node.querySelector('.pay-choice').hidden = true;
+  } catch (e) {
+   addBotBubble('Falha ao salvar o lead: ' + e.message);
+   send.disabled = false;
+  }
+ }
+
+ send.addEventListener('click', submitLead);
+ inp.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submitLead();
+ });
 }
 
 function renderProTeaser(opts) {
@@ -323,7 +430,7 @@ function renderProTeaser(opts) {
  questions = PRO_QUESTIONS_ADS,
  bubble = 'Quer ir além do ranking? Na <strong>versão Pro</strong> você pergunta sobre os anúncios reais da concorrência.',
  label = 'Radar Pro Google Ads profundo',
- blurb = 'Exemplos de perguntas desbloqueadas na versao paga, por enquanto só visual:',
+ blurb = 'Exemplos de perguntas desbloqueadas na versão paga:',
  ctaText = 'Desbloqueie comparação de campanhas, modelos de anúncio e os <strong>top anúncios</strong> do líder do nicho.',
  } = opts || {};
 
@@ -357,12 +464,11 @@ function renderProTeaser(opts) {
  <div class="pro-cta-text">${ctaText}</div>
  <button type="button" class="pro-cta-btn ${theme}" data-pro-cta>Desbloquear por R$ 99</button>
  </div>
- <div class="pro-toast" role="status"></div>
  </div>
  </div>`);
 
  node.querySelectorAll('[data-pro-q], [data-pro-cta]').forEach((btn) => {
- btn.addEventListener('click', () => showProToast(node));
+  btn.addEventListener('click', () => startPaidCapture(channel));
  });
 }
 
@@ -379,37 +485,59 @@ function renderProFinale() {
  const node = append(`
  <div class="q-block reveal">
  <div class="bot-label"><span class="dot"></span>Radar Agent</div>
- <div class="q-bubble">O gratuito mostrou Ads, SEO e Marca. Na <strong>versão Pro</strong> abrimos o restante do radar de canais.</div>
+ <div class="q-bubble">O gratuito mostrou Ads, SEO e Marca. Quer abrir os <strong>canais extra</strong>?</div>
  <div class="answer-card ac-finale">
- <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Radar Pro Todos os canais</div></div>
+ <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Canais extra</div></div>
  <div class="hero-num">
- <div class="finale-price">R$ 99</div>
- <div class="hero-sub">por analise completa, desbloqueie o mapa multi-canal</div>
+ <div class="finale-price" style="font-size:22px">Meta · LinkedIn · IG · YT</div>
+ <div class="hero-sub">mesma lógica do gratuito, etapa a etapa (TikTok em breve)</div>
  </div>
  <div class="ac-text">
- Além do que você já viu, a versão Pro inclui a análise dos demais canais de marketing
- da concorrência para entender onde o mercado investe e onde você ainda não aparece.
+ Vamos rankear anúncios Meta e LinkedIn e presença em Instagram e YouTube entre você e os concorrentes Alto.
+ Cada canal também terá oferta Pro de análise profunda.
  </div>
  <div class="channel-chips">
  <span class="channel-chip meta">Meta Ads</span>
+ <span class="channel-chip li">LinkedIn</span>
  <span class="channel-chip ig">Instagram</span>
  <span class="channel-chip yt">YouTube</span>
- <span class="channel-chip tt">TikTok</span>
- <span class="channel-chip li">LinkedIn</span>
  </div>
  <div class="finale-cta">
  <div class="pro-cta-text" style="max-width:380px">
- Uma leitura unificada: anúncios pagos + orgânico social + marca com perguntas
- estratégicas liberadas em cada canal.
+ Clique para rodar os canais extra agora (MVP — sem cobrança nesta etapa).
  </div>
- <button type="button" class="finale-btn" data-pro-cta>Quero a versao Pro R$ 99</button>
+ <button type="button" class="finale-btn" data-extras-cta>Analisar canais extra</button>
  </div>
- <div class="pro-toast" role="status"></div>
  </div>
  </div>`);
- node.querySelectorAll('[data-pro-cta]').forEach((btn) => {
- btn.addEventListener('click', () => showProToast(node));
- });
+ node.querySelector('[data-extras-cta]').addEventListener('click', () => startExtrasJob());
+}
+
+function renderCountChannel(section, title, colorVar, agentLetter, labelCls, agentCls, cardCls, stageLabel, proOpts) {
+ const data = section || {};
+ const rows = (data.rows || []).map((r, i) => `
+  <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}
+   <td class="dt-name">${esc(r.name)}</td>
+   <td class="dt-val">${esc(r.value_fmt)}</td>
+   <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,${colorVar},#a5b4fc)"></div></div></td>
+  </tr>`).join('');
+ const rank = data.client_rank ? `, voce em ${data.client_rank}º` : '';
+ append(`
+ <div class="q-block reveal">
+  <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+  <div class="q-bubble">${esc(stageLabel)}</div>
+  <div class="answer-card ${cardCls}">
+   <div class="ac-head"><div class="ac-agent ${agentCls}">${agentLetter}</div><div class="ac-label ${labelCls}">${esc(title)}</div></div>
+   <div class="hero-num"><div class="hero-val" style="color:${colorVar}">${esc(data.total_fmt || '0')}</div>
+   <div class="hero-sub">${esc(data.unit || '')} no recorte, ${esc(data.leader || '—')} lidera${esc(rank)}</div></div>
+   <div style="overflow-x:auto"><table class="dtable">
+    <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Valor</th><th>Participacao</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" class="dt-name">Sem dados neste canal</td></tr>'}</tbody>
+   </table></div>
+   ${analysisBlocks('ads', data.analysis_title, data.insight, data.pro_hook)}
+  </div>
+ </div>`);
+ renderProTeaser(proOpts);
 }
 
 function renderBriefingCompetitors(payload) {
@@ -569,6 +697,50 @@ function handlePartial(msg) {
  else if (section === 'google_ads') renderAdsSection(data, client);
  else if (section === 'seo') renderSeoSection(data, client);
  else if (section === 'brand') renderBrandSection(data, client);
+ else if (section === 'meta') renderCountChannel(
+  data, 'Meta Ads Ranking', 'var(--violet)', 'M', 'lb-finale', 'ag-finale', 'ac-finale',
+  'Canais extra 1/4: Quem anuncia mais no Meta?',
+  {
+   channel: 'meta', questions: PRO_QUESTIONS_META,
+   bubble: 'Quer ir além do ranking Meta? Na <strong>versão Pro</strong> analisamos criativos e formatos.',
+   label: 'Radar Pro Meta Ads profundo',
+   blurb: 'Exemplos de perguntas desbloqueadas na versão paga:',
+   ctaText: 'Desbloqueie a leitura profunda de <strong>criativos Meta</strong> do líder.',
+  }
+ );
+ else if (section === 'linkedin') renderCountChannel(
+  data, 'LinkedIn Ads Ranking', 'var(--blue)', 'L', 'lb-seo', 'ag-seo', 'ac-seo',
+  'Canais extra 2/4: Quem anuncia mais no LinkedIn?',
+  {
+   channel: 'linkedin', questions: PRO_QUESTIONS_LINKEDIN,
+   bubble: 'Quer aprofundar <strong>LinkedIn Ads</strong>? Na versão Pro abrimos mensagens e estrutura.',
+   label: 'Radar Pro LinkedIn profundo',
+   blurb: 'Exemplos de perguntas desbloqueadas na versão paga:',
+   ctaText: 'Desbloqueie a análise Pro de <strong>campanhas LinkedIn</strong>.',
+  }
+ );
+ else if (section === 'instagram') renderCountChannel(
+  data, 'Instagram Ranking', 'var(--pink)', 'I', 'lb-finale', 'ag-finale', 'ac-finale',
+  'Canais extra 3/4: Quem cresce mais no Instagram?',
+  {
+   channel: 'instagram', questions: PRO_QUESTIONS_IG,
+   bubble: 'Quer entender o <strong>crescimento no Instagram</strong>? Na versão Pro aprofundamos conteúdo.',
+   label: 'Radar Pro Instagram profundo',
+   blurb: 'Exemplos de perguntas desbloqueadas na versão paga:',
+   ctaText: 'Desbloqueie o diagnóstico Pro de <strong>Instagram</strong>.',
+  }
+ );
+ else if (section === 'youtube') renderCountChannel(
+  data, 'YouTube Ranking', 'var(--red)', 'Y', 'lb-gads', 'ag-gads', 'ac-gads',
+  'Canais extra 4/4: Quem lidera no YouTube?',
+  {
+   channel: 'youtube', questions: PRO_QUESTIONS_YT,
+   bubble: 'Quer autoridade em vídeo? Na <strong>versão Pro</strong> avaliamos YouTube a fundo.',
+   label: 'Radar Pro YouTube profundo',
+   blurb: 'Exemplos de perguntas desbloqueadas na versão paga:',
+   ctaText: 'Desbloqueie a análise Pro de <strong>YouTube</strong>.',
+  }
+ );
 }
 
 function renderReport(report) {
@@ -611,6 +783,104 @@ function setBusy(v) {
  topStatus.textContent = v ? 'Analisando...' : 'Pronto';
 }
 
+async function startExtrasJob() {
+ if (busy) return;
+ if (!analysisCtx.slug && !analysisCtx.company) {
+  addBotBubble('Rode uma análise gratuita primeiro (URL ou **demo**) para eu ter o cliente dos canais extra.');
+  return;
+ }
+ setBusy(true);
+ try {
+  const res = await fetch('/api/extras', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({
+    slug: analysisCtx.slug || 'chatguru',
+    company: analysisCtx.company || '',
+    demo: !!analysisCtx.demo,
+    job_id: analysisCtx.job_id || '',
+   }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+   append(`<div class="q-block reveal"><div class="err-card">${esc(data.error || 'Erro ao iniciar canais extra')}</div></div>`);
+   setBusy(false);
+   return;
+  }
+  const jobId = data.job_id;
+  stepDefs = data.steps || [];
+  addBotBubble(data.ack);
+  const first = stepDefs[0] || {};
+  const etaSec = analysisCtx.demo ? (first.eta_demo || 12) : (first.eta_live || 180);
+  const etaGuess = etaSec >= 60 ? ('~' + Math.round(etaSec / 60) + ' min') : ('~' + etaSec + 's');
+  renderStepsBlock(stepDefs, etaGuess);
+  listenJobEvents(jobId, true);
+ } catch (e) {
+  append(`<div class="q-block reveal"><div class="err-card">${esc(e.message)}</div></div>`);
+  setBusy(false);
+ }
+}
+
+function listenJobEvents(jobId, isExtras) {
+ let gotPartial = false;
+ const es = new EventSource(`/api/jobs/${jobId}/events`);
+ es.onmessage = (ev) => {
+  let msg;
+  try { msg = JSON.parse(ev.data); } catch { return; }
+  if (msg.type === 'pipeline_meta') {
+   updateProgressUI({
+    eta_label: msg.eta_label,
+    progress_label: 'Etapa 0/' + (msg.total_steps || 4),
+    detail: msg.extras ? 'Canais extra...' : (msg.mode === 'live' ? 'Pipeline ao vivo iniciada...' : (msg.mode === 'demo' ? 'Modo demo...' : 'Carregando dados...')),
+    index: 0,
+    total: msg.total_steps || 4,
+    state: 'running',
+   });
+  }
+  if (msg.type === 'step' || msg.type === 'snapshot') {
+   updateSteps(msg.steps);
+  }
+  if (msg.type === 'progress') {
+   updateSteps(msg.steps);
+   updateProgressUI(msg);
+   if (msg.progress_label) topStatus.textContent = msg.progress_label;
+  }
+  if (msg.type === 'partial') {
+   gotPartial = true;
+   handlePartial(msg);
+  }
+  if (msg.type === 'complete') {
+   updateSteps(msg.steps || {});
+   document.querySelectorAll('#stepsList .step').forEach(s => s.classList.add('done'));
+   clearStageProgressTimer();
+   const fill = document.getElementById('progressFill');
+   const label = document.getElementById('progressLabel');
+   const detail = document.getElementById('progressDetail');
+   if (fill) fill.style.width = '100%';
+   if (label) label.textContent = (msg.extras || isExtras) ? 'Extra 4/4' : 'Etapa 4/4';
+   if (detail) detail.textContent = 'Analise concluida';
+   const etaEl = document.getElementById('progressEta');
+   if (etaEl) etaEl.textContent = 'Concluido';
+   if (!gotPartial && msg.report && !(msg.extras || isExtras)) {
+    renderReport(msg.report);
+   } else if (msg.extras || isExtras) {
+    addBotBubble('Canais extra concluídos. Cada bloco acima tem oferta Pro de análise profunda (entrega manual em até 24h).');
+   } else {
+    renderProFinale();
+    addBotBubble('Pronto. Quer analisar outra empresa? Envie uma nova URL, ou digite **demo** para ver o exemplo Chatguru.');
+   }
+   es.close();
+   setBusy(false);
+  }
+  if (msg.type === 'error') {
+   append(`<div class="q-block reveal"><div class="err-card">${esc(msg.message || 'Falha na pipeline')}</div></div>`);
+   es.close();
+   setBusy(false);
+  }
+ };
+ es.onerror = () => {};
+}
+
 async function sendMessage() {
  const text = input.value.trim();
  if (!text || busy) return;
@@ -634,76 +904,26 @@ async function sendMessage() {
  jobId = data.job_id;
  stepDefs = data.steps || stepDefs;
  const p = data.parsed || {};
+ analysisCtx = {
+  company: p.company || '',
+  slug: p.slug || '',
+  job_id: jobId,
+  demo: !!p.demo,
+ };
  topMeta.textContent = `${p.company || p.slug || 'cliente'}${p.demo ? ' (demo)' : ''}`;
  addBotBubble(data.ack);
  const first = stepDefs[0] || {};
  const etaSec = p.demo ? (first.eta_demo || 10) : (first.eta_live || 120);
  const etaGuess = etaSec >= 60 ? ('~' + Math.round(etaSec / 60) + ' min') : ('~' + etaSec + 's');
  renderStepsBlock(stepDefs, etaGuess);
+ listenJobEvents(jobId, false);
  } catch (e) {
  append(`<div class="q-block reveal"><div class="err-card">${esc(e.message)}</div></div>`);
  setBusy(false);
  return;
  }
-
- let gotPartial = false;
- const es = new EventSource(`/api/jobs/${jobId}/events`);
- es.onmessage = (ev) => {
- let msg;
- try { msg = JSON.parse(ev.data); } catch { return; }
- if (msg.type === 'pipeline_meta') {
- updateProgressUI({
- eta_label: msg.eta_label,
- progress_label: 'Etapa 0/' + (msg.total_steps || 4),
- detail: msg.mode === 'live' ? 'Pipeline ao vivo iniciada...' : (msg.mode === 'demo' ? 'Modo demo...' : 'Carregando dados...'),
- index: 0,
- total: msg.total_steps || 4,
- state: 'running',
- });
- }
- if (msg.type === 'step' || msg.type === 'snapshot') {
- updateSteps(msg.steps);
- }
- if (msg.type === 'progress') {
- updateSteps(msg.steps);
- updateProgressUI(msg);
- if (msg.progress_label) topStatus.textContent = msg.progress_label;
- }
- if (msg.type === 'partial') {
- gotPartial = true;
- handlePartial(msg);
- }
- if (msg.type === 'complete') {
- updateSteps(msg.steps || {});
- document.querySelectorAll('#stepsList .step').forEach(s => s.classList.add('done'));
- clearStageProgressTimer();
- const fill = document.getElementById('progressFill');
- const label = document.getElementById('progressLabel');
- const detail = document.getElementById('progressDetail');
- if (fill) fill.style.width = '100%';
- if (label) label.textContent = 'Etapa 4/4';
- if (detail) detail.textContent = 'Analise concluida';
- const etaEl = document.getElementById('progressEta');
- if (etaEl) etaEl.textContent = 'Concluido';
- if (!gotPartial && msg.report) {
- renderReport(msg.report);
- } else {
- renderProFinale();
- addBotBubble('Pronto. Quer analisar outra empresa? Envie uma nova URL, ou digite **demo** para ver o exemplo Chatguru.');
- }
- es.close();
- setBusy(false);
- }
- if (msg.type === 'error') {
- append(`<div class="q-block reveal"><div class="err-card">${esc(msg.message || 'Falha na pipeline')}</div></div>`);
- es.close();
- setBusy(false);
- }
- };
- es.onerror = () => {
- // browser retries; if job already done, stop
- };
 }
+
 
 sendBtn.addEventListener('click', sendMessage);
 input.addEventListener('keydown', (e) => {

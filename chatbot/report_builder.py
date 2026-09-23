@@ -599,6 +599,14 @@ def build_report_from_xlsx(
                 "marca": _safe_int(_get(row, idx, "marca atual")),
                 "google_ads": _safe_int(_get(row, idx, "google ads")),
                 "google_ads_url": str(_get(row, idx, "google ads url") or ""),
+                "meta_ads": _safe_int(_get(row, idx, "meta ads")),
+                "meta_ads_url": str(_get(row, idx, "meta ads url") or ""),
+                "linkedin_ads": _safe_int(_get(row, idx, "linkedin ads", "linkedin ads")),
+                "linkedin_ads_url": str(_get(row, idx, "linkedin ads url", "linkedin ads url") or ""),
+                "instagram_followers": _safe_int(_get(row, idx, "instagram followers", "instagram")),
+                "instagram_url": str(_get(row, idx, "instagram url") or ""),
+                "youtube_followers": _safe_int(_get(row, idx, "youtube followers", "youtube")),
+                "youtube_url": str(_get(row, idx, "youtube url") or ""),
                 "seo_growth": growth.get(dom_key),
                 "brand_growth": brand_growth.get(dom_key),
                 "url": str(_get(row, idx, "url") or ""),
@@ -621,6 +629,14 @@ def build_report_from_xlsx(
             "marca": client_from_sheet.get("marca"),
             "google_ads": None,
             "google_ads_url": "",
+            "meta_ads": None,
+            "meta_ads_url": "",
+            "linkedin_ads": None,
+            "linkedin_ads_url": "",
+            "instagram_followers": None,
+            "instagram_url": "",
+            "youtube_followers": None,
+            "youtube_url": "",
             "seo_growth": client_from_sheet.get("seo_growth"),
             "brand_growth": client_from_sheet.get("brand_growth"),
             "url": f"https://{client_from_sheet['domain']}/",
@@ -639,6 +655,14 @@ def build_report_from_xlsx(
             "marca": None,
             "google_ads": None,
             "google_ads_url": "",
+            "meta_ads": None,
+            "meta_ads_url": "",
+            "linkedin_ads": None,
+            "linkedin_ads_url": "",
+            "instagram_followers": None,
+            "instagram_url": "",
+            "youtube_followers": None,
+            "youtube_url": "",
             "seo_growth": growth.get(guess_dom.lower()),
             "brand_growth": brand_growth.get(guess_dom.lower()),
             "url": f"https://{guess_dom}/",
@@ -777,13 +801,83 @@ def build_report_from_xlsx(
     seo_analysis = _build_seo_analysis(client_label, seo_table)
     brand_analysis = _build_brand_analysis(client_label, brand_table)
 
-    leader_seo = seo_table[0]["name"] if seo_table else "n/d"
-    leader_ads = gads_table[0]["name"] if gads_table else "n/d"
-    leader_brand = brand_table[0]["name"] if brand_table else "n/d"
+    def _count_section(
+        field: str,
+        url_field: str,
+        label: str,
+        unit: str,
+        hook: str,
+    ) -> dict[str, Any]:
+        rows_src = [
+            e for e in entities
+            if (e.get(field) or 0) > 0 or e.get("is_client")
+        ]
+        rows_sorted = sorted(rows_src, key=lambda x: (x.get(field) or 0), reverse=True)
+        total = sum(e.get(field) or 0 for e in rows_sorted)
+        max_v = max((e.get(field) or 0 for e in rows_sorted), default=1) or 1
+        table = []
+        client_rank = None
+        for i, e in enumerate(rows_sorted, 1):
+            val = e.get(field) or 0
+            if e.get("is_client"):
+                client_rank = i
+            bar = int(round(val / max_v * 100)) if max_v else 1
+            table.append({
+                "name": e["name"],
+                "domain": e["domain"],
+                "value": val,
+                "value_fmt": _fmt_int(val) if val else "0",
+                "bar": max(bar, 1) if val else 1,
+                "url": e.get(url_field) or "",
+                "is_client": bool(e.get("is_client")),
+            })
+        leader = rows_sorted[0]["name"] if rows_sorted else "—"
+        client_row = next((r for r in table if r.get("is_client")), None)
+        rival = next((r for r in table if not r.get("is_client")), None)
+        if client_row and rival:
+            body = (
+                f"**{client_label}** tem {client_row['value_fmt']} {unit}. "
+                f"Líder do recorte: **{rival['name']}** com {rival['value_fmt']}."
+            )
+        elif client_row:
+            body = f"**{client_label}** aparece com {client_row['value_fmt']} {unit} neste canal."
+        else:
+            body = f"Ranking de {label} entre cliente e concorrentes Alto."
+        return {
+            "total_fmt": _fmt_int(total) if total else "0",
+            "total": total,
+            "leader": leader,
+            "client_rank": client_rank,
+            "rows": table,
+            "insight": body,
+            "analysis_title": f"Analise Cliente vs concorrentes ({label})",
+            "pro_hook": hook,
+            "unit": unit,
+        }
+
+    meta_section = _count_section(
+        "meta_ads", "meta_ads_url", "Meta Ads", "anúncios",
+        "Na versão Pro comparamos criativos Meta, formatos e o que o líder testa e você ainda não.",
+    )
+    linkedin_section = _count_section(
+        "linkedin_ads", "linkedin_ads_url", "LinkedIn Ads", "anúncios",
+        "Na versão Pro aprofundamos mensagens B2B e anúncios LinkedIn do líder do nicho.",
+    )
+    ig_section = _count_section(
+        "instagram_followers", "instagram_url", "Instagram", "seguidores",
+        "Na versão Pro analisamos conteúdo, frequência e o que gera crescimento de seguidores.",
+    )
+    yt_section = _count_section(
+        "youtube_followers", "youtube_url", "YouTube", "inscritos",
+        "Na versão Pro avaliamos autoridade em vídeo e oportunidades de conteúdo no YouTube.",
+    )
 
     client_ads_rank = next((i + 1 for i, r in enumerate(gads_table) if r.get("is_client")), None)
     client_seo_rank = next((i + 1 for i, r in enumerate(seo_table) if r.get("is_client")), None)
     client_brand_rank = next((i + 1 for i, r in enumerate(brand_table) if r.get("is_client")), None)
+    leader_seo = seo_table[0]["name"] if seo_table else "n/d"
+    leader_ads = gads_table[0]["name"] if gads_table else "n/d"
+    leader_brand = brand_table[0]["name"] if brand_table else "n/d"
 
     return {
         "client": client_label,
@@ -832,6 +926,10 @@ def build_report_from_xlsx(
             "analysis_title": brand_analysis["title"],
             "pro_hook": brand_analysis["hook"],
         },
+        "meta": meta_section,
+        "linkedin": linkedin_section,
+        "instagram": ig_section,
+        "youtube": yt_section,
         "source_xlsx": str(xlsx_path),
     }
 

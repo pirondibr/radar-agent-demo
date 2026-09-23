@@ -22,7 +22,7 @@ from typing import Any, Optional
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 from parse_input import ParsedInput, parse_user_message
-from pipeline import STEP_DEFS, run_pipeline
+from pipeline import EXTRA_STEP_DEFS, STEP_DEFS, run_extras_pipeline, run_pipeline
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
@@ -48,7 +48,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.2.0"
 
 REQUIRED_LIVE_KEYS = (
     "OPENROUTER_API_KEY",
@@ -57,6 +57,9 @@ REQUIRED_LIVE_KEYS = (
     "DATAFORSEO_PASS",
     "SEMRUSH_API_KEY",
 )
+
+LEADS_DIR = Path(__file__).resolve().parent / "data"
+LEADS_FILE = LEADS_DIR / "leads.jsonl"
 
 
 def _live_keys_ready() -> dict[str, bool]:
@@ -104,10 +107,21 @@ def _worker(job: Job) -> None:
         def _set_step(step_id: str, state: str, detail: str = "") -> None:
             set_step(job, step_id, state, detail)
 
-        report = run_pipeline(job.parsed, _emit, _set_step)
+        kind = getattr(job.parsed, "kind", "") or ""
+        if kind == "extras":
+            report = run_extras_pipeline(
+                slug=job.parsed.slug or "chatguru",
+                company=job.parsed.company or "",
+                emit=_emit,
+                set_step=_set_step,
+                demo=bool(job.parsed.demo),
+                preferred_competitors=job.parsed.competitors,
+            )
+        else:
+            report = run_pipeline(job.parsed, _emit, _set_step)
         job.report = report
         job.status = "done"
-        emit(job, "complete", report=report, progressive=True)
+        emit(job, "complete", report=report, progressive=True, extras=(kind == "extras"))
     except Exception as e:
         job.status = "error"
         job.error = str(e)
@@ -263,6 +277,98 @@ def _ack_message(parsed: ParsedInput) -> str:
         f"Perfeito. Vou analisar **{parsed.company or parsed.slug}**{mode}.{comps} "
         "Vou liberar Briefing, Concorrentes, Google Ads, SEO e Marca conforme cada etapa terminar."
     )
+
+
+@app.post("/api/leads")
+def create_lead():
+    """MVP pago simulado: captura email/WhatsApp para analise profunda manual."""
+    data = request.get_json(silent=True) or {}
+    contact_type = (data.get("contact_type") or "").strip().lower()
+    contact = (data.get("contact") or "").strip()
+    channel = (data.get("channel") or "").strip()
+    if contact_type not in ("email", "whatsapp"):
+        return jsonify({"error": "Informe contact_type: email ou whatsapp"}), 400
+    if not contact or len(contact) < 5:
+        return jsonify({"error": "Informe um contato valido"}), 400
+
+    lead = {
+        "id": uuid.uuid4().hex[:12],
+        "ts": time.time(),
+        "offer": data.get("offer") or "deep_channel",
+        "channel": channel,
+        "contact_type": contact_type,
+        "contact": contact,
+        "company": (data.get("company") or "").strip(),
+        "slug": (data.get("slug") or "").strip(),
+        "job_id": (data.get("job_id") or "").strip(),
+        "simulated_payment": True,
+        "status": "pending_manual",
+    }
+    LEADS_DIR.mkdir(parents=True, exist_ok=True)
+    with LEADS_FILE.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(lead, ensure_ascii=False) + "\n")
+    print(f"[LEAD] {lead['id']} {lead['channel']} {lead['contact_type']}={lead['contact']} slug={lead['slug']}")
+    return jsonify({
+        "ok": True,
+        "lead_id": lead["id"],
+        "message": (
+            f"Perfeito. Sua analise Pro de **{channel or 'canal'}** esta na fila. "
+            f"Em ate 24h enviamos no seu {contact_type}."
+        ),
+    })
+
+
+@app.post("/api/extras")
+def start_extras():
+    """Canais extra: Meta, LinkedIn, Instagram, YouTube (sem TikTok)."""
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip() or "chatguru"
+    company = (data.get("company") or "").strip() or slug
+    demo = bool(data.get("demo"))
+    job_id_src = (data.get("job_id") or "").strip()
+
+    if DEMO_ONLY:
+        demo = True
+        slug = "chatguru"
+        company = company or "Chatguru (demo)"
+    elif not demo:
+        missing = _missing_live_keys()
+        # extras precisam sobretudo ScrapingBee
+        if "SCRAPINGBEE_API_KEY" in missing:
+            return jsonify({
+                "error": "Canais extra precisam de SCRAPINGBEE_API_KEY no servidor.",
+                "missing_keys": missing,
+            }), 503
+
+    parsed = ParsedInput(
+        company=company,
+        slug=slug,
+        demo=demo,
+        kind="extras",
+        raw=f"extras:{slug}",
+    )
+    job_id = uuid.uuid4().hex[:12]
+    job = Job(job_id=job_id, parsed=parsed)
+    for s in EXTRA_STEP_DEFS:
+        job.steps[s["id"]] = {"state": "pending", "detail": "", "at": 0}
+    jobs[job_id] = job
+    threading.Thread(target=_worker, args=(job,), daemon=True).start()
+
+    return jsonify({
+        "job_id": job_id,
+        "parent_job_id": job_id_src or None,
+        "parsed": {
+            "company": company,
+            "slug": slug,
+            "demo": demo,
+            "kind": "extras",
+        },
+        "steps": EXTRA_STEP_DEFS,
+        "ack": (
+            f"Vou analisar os **canais extra** de **{company}**: Meta Ads, LinkedIn, Instagram e YouTube "
+            "(TikTok em breve). Resultados aparecem etapa a etapa."
+        ),
+    })
 
 
 @app.get("/api/jobs/<job_id>/events")

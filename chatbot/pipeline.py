@@ -23,6 +23,9 @@ SCRIPT_CONCORRENTES = FINAL_DIR / "3 - concorrentes Geral.py"
 SCRIPT_GOOGLE_ADS = FINAL_DIR / "5a - google ads.py"
 SCRIPT_SEO = FINAL_DIR / "5b - seo organico.py"
 SCRIPT_BRAND = FINAL_DIR / "5c - brand search.py"
+SCRIPT_META = FINAL_DIR / "5d - meta ads.py"
+SCRIPT_LINKEDIN = FINAL_DIR / "5e - linkedin ads.py"
+SCRIPT_SOCIAL = FINAL_DIR / "5f - social ig yt.py"
 METRICAS_DIR = RADAR_ROOT / "outputs" / "metricas"
 BRIEFING_DIR = RADAR_ROOT / "outputs" / "entender"
 CONCORRENTES_DIR = RADAR_ROOT / "outputs" / "concorrentes"
@@ -76,11 +79,61 @@ STEP_DEFS = [
 
 TOTAL_STEPS = len(STEP_DEFS)
 
+# Canais extra (apos free): Meta, LinkedIn, Instagram, YouTube — sem TikTok
+EXTRA_STEP_DEFS = [
+    {
+        "id": "meta",
+        "label": "Meta Ads",
+        "tag": "1/4",
+        "tag_cls": "amber",
+        "index": 1,
+        "eta_live": 180,
+        "eta_demo": 12,
+        "eta_cache": 10,
+    },
+    {
+        "id": "linkedin",
+        "label": "LinkedIn Ads",
+        "tag": "2/4",
+        "tag_cls": "blue",
+        "index": 2,
+        "eta_live": 180,
+        "eta_demo": 12,
+        "eta_cache": 10,
+    },
+    {
+        "id": "instagram",
+        "label": "Instagram",
+        "tag": "3/4",
+        "tag_cls": "green",
+        "index": 3,
+        "eta_live": 120,
+        "eta_demo": 12,
+        "eta_cache": 10,
+    },
+    {
+        "id": "youtube",
+        "label": "YouTube",
+        "tag": "4/4",
+        "tag_cls": "green",
+        "index": 4,
+        "eta_live": 30,
+        "eta_demo": 10,
+        "eta_cache": 9,
+    },
+]
+
+EXTRA_TOTAL_STEPS = len(EXTRA_STEP_DEFS)
+
 REVEAL_PAUSE = {
     "briefing_concorrentes": 1.6,
     "google_ads": 1.6,
     "seo": 1.5,
     "brand": 1.4,
+    "meta": 1.2,
+    "linkedin": 1.2,
+    "instagram": 1.1,
+    "youtube": 1.0,
 }
 
 # Demo publica: revelacao mais rapida
@@ -90,6 +143,10 @@ if __import__("os").environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true"
         "google_ads": 0.7,
         "seo": 0.6,
         "brand": 0.6,
+        "meta": 0.5,
+        "linkedin": 0.5,
+        "instagram": 0.5,
+        "youtube": 0.5,
     }
 
 
@@ -171,8 +228,13 @@ def _fmt_eta(seconds: int) -> str:
     return f"~{seconds}s"
 
 
-def _step_eta_sec(step_id: str, mode: str) -> int:
-    meta = next((s for s in STEP_DEFS if s["id"] == step_id), None)
+def _step_meta(step_id: str, defs: Optional[list] = None) -> Optional[dict]:
+    pool = defs if defs is not None else (STEP_DEFS + EXTRA_STEP_DEFS)
+    return next((s for s in pool if s["id"] == step_id), None)
+
+
+def _step_eta_sec(step_id: str, mode: str, defs: Optional[list] = None) -> int:
+    meta = _step_meta(step_id, defs)
     if not meta:
         return 60
     key = f"eta_{mode}" if mode in ("live", "demo", "cache") else "eta_live"
@@ -186,10 +248,15 @@ def _emit_progress(
     state: str,
     detail: str,
     mode: str,
+    *,
+    defs: Optional[list] = None,
+    total: Optional[int] = None,
 ) -> None:
-    meta = next((s for s in STEP_DEFS if s["id"] == step_id), None)
+    active_defs = defs if defs is not None else STEP_DEFS
+    meta = _step_meta(step_id, active_defs)
     index = int(meta["index"]) if meta else 0
-    eta_sec = _step_eta_sec(step_id, mode)
+    total_n = total if total is not None else len(active_defs)
+    eta_sec = _step_eta_sec(step_id, mode, active_defs)
     set_step(step_id, state, detail)
     emit(
         "progress",
@@ -197,11 +264,11 @@ def _emit_progress(
         state=state,
         detail=detail,
         index=index,
-        total=TOTAL_STEPS,
+        total=total_n,
         label=meta["label"] if meta else step_id,
         eta_seconds=eta_sec,
         eta_label=_fmt_eta(eta_sec),
-        progress_label=f"Etapa {index}/{TOTAL_STEPS}",
+        progress_label=f"Etapa {index}/{total_n}",
     )
 
 
@@ -243,6 +310,9 @@ def _emit_section(emit: EmitFn, section: str, report: dict, client: str = "") ->
         payload["client"] = report.get("client")
     elif section == "brand":
         payload["data"] = report.get("brand") or {}
+        payload["client"] = report.get("client")
+    elif section in ("meta", "linkedin", "instagram", "youtube"):
+        payload["data"] = report.get(section) or {}
         payload["client"] = report.get("client")
     emit("partial", **payload)
 
@@ -473,3 +543,110 @@ def run_pipeline(parsed: ParsedInput, emit: EmitFn, set_step: EmitFn) -> dict:
     if parsed.demo:
         return run_demo_pipeline(parsed, emit, set_step)
     return run_live_pipeline(parsed, emit, set_step)
+
+
+def run_extras_pipeline(
+    *,
+    slug: str,
+    company: str,
+    emit: EmitFn,
+    set_step: EmitFn,
+    demo: bool = False,
+    preferred_competitors: Optional[list[str]] = None,
+) -> dict:
+    """Canais extra: Meta → LinkedIn → Instagram → YouTube (sem TikTok)."""
+    slug = slug or "chatguru"
+    client_name = company or slug
+    mode = "demo" if demo else "live"
+    defs = EXTRA_STEP_DEFS
+    total = EXTRA_TOTAL_STEPS
+
+    def on_log(line: str) -> None:
+        emit("log", line=line)
+
+    first_eta = _step_eta_sec("meta", mode, defs)
+    emit(
+        "pipeline_meta",
+        mode=mode,
+        eta_seconds=first_eta,
+        eta_label=_fmt_eta(first_eta),
+        total_steps=total,
+        extras=True,
+    )
+
+    existing = find_metricas_xlsx(slug)
+    if demo:
+        xlsx = existing if (existing and existing.exists()) else DEMO_XLSX
+        if not xlsx.exists():
+            raise FileNotFoundError(f"XLSX demo nao encontrado para extras: {xlsx}")
+        report = build_report_from_xlsx(
+            xlsx,
+            client_name=client_name,
+            preferred_competitors=preferred_competitors,
+        )
+        emit("log", line=f"[EXTRAS/DEMO] Revelando canais extra de {xlsx.name}")
+        for sid, label in (
+            ("meta", "Meta Ads"),
+            ("linkedin", "LinkedIn Ads"),
+            ("instagram", "Instagram"),
+            ("youtube", "YouTube"),
+        ):
+            _emit_progress(
+                emit, set_step, sid, "running", f"Ranking {label}...", mode,
+                defs=defs, total=total,
+            )
+            time.sleep(REVEAL_PAUSE.get(sid, 0.6))
+            _emit_section(emit, sid, report, client_name)
+            _emit_progress(
+                emit, set_step, sid, "done", f"{label} pronto", mode,
+                defs=defs, total=total,
+            )
+        return report
+
+    if not SCRIPT_META.exists() or not SCRIPT_LINKEDIN.exists() or not SCRIPT_SOCIAL.exists():
+        raise FileNotFoundError("Scripts de canais extra (5d/5e/5f) nao encontrados.")
+
+    # Meta
+    _emit_progress(
+        emit, set_step, "meta", "running", "Coletando Meta Ads Library...", mode,
+        defs=defs, total=total,
+    )
+    _run_script([sys.executable, str(SCRIPT_META), slug], FINAL_DIR, on_log)
+    xlsx = find_metricas_xlsx(slug)
+    if not xlsx:
+        raise FileNotFoundError(f"XLSX de metricas nao encontrado para '{slug}' (rode a analise gratuita antes).")
+    report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred_competitors)
+    _emit_section(emit, "meta", report, client_name)
+    _emit_progress(emit, set_step, "meta", "done", "Meta Ads pronto", mode, defs=defs, total=total)
+
+    # LinkedIn
+    _emit_progress(
+        emit, set_step, "linkedin", "running", "Coletando LinkedIn Ads...", mode,
+        defs=defs, total=total,
+    )
+    _run_script([sys.executable, str(SCRIPT_LINKEDIN), slug], FINAL_DIR, on_log)
+    xlsx = find_metricas_xlsx(slug) or xlsx
+    report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred_competitors)
+    _emit_section(emit, "linkedin", report, client_name)
+    _emit_progress(emit, set_step, "linkedin", "done", "LinkedIn Ads pronto", mode, defs=defs, total=total)
+
+    # Social = IG + YT (um script, duas revelacoes)
+    _emit_progress(
+        emit, set_step, "instagram", "running", "Coletando Instagram + YouTube...", mode,
+        defs=defs, total=total,
+    )
+    _run_script([sys.executable, str(SCRIPT_SOCIAL), slug], FINAL_DIR, on_log)
+    xlsx = find_metricas_xlsx(slug) or xlsx
+    report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred_competitors)
+    _emit_section(emit, "instagram", report, client_name)
+    _emit_progress(emit, set_step, "instagram", "done", "Instagram pronto", mode, defs=defs, total=total)
+
+    _emit_progress(
+        emit, set_step, "youtube", "running", "Montando ranking YouTube...", mode,
+        defs=defs, total=total,
+    )
+    time.sleep(REVEAL_PAUSE.get("youtube", 1.0))
+    _emit_section(emit, "youtube", report, client_name)
+    _emit_progress(emit, set_step, "youtube", "done", "YouTube pronto", mode, defs=defs, total=total)
+
+    return report

@@ -16,6 +16,7 @@ class ParsedInput:
     competitors: list[str] = field(default_factory=list)
     demo: bool = False
     raw: str = ""
+    kind: str = ""  # "" | "extras"
 
 
 def slugify_client(client_input: str) -> str:

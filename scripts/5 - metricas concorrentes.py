@@ -962,10 +962,13 @@ def build_metric_rows(
             t_links = time.time()
             instagram_followers = parse_instagram_followers(socials["instagram"]) if socials["instagram"] else None
             youtube_followers = parse_youtube_followers(socials["youtube"]) if socials["youtube"] else None
-            tiktok_followers = parse_tiktok_followers(socials["tiktok"]) if socials["tiktok"] else None
+            # TikTok: script ainda nao existe — nao coletamos no chatbot
+            socials["tiktok"] = ""
+            tiktok_followers = None
             print(
                 f"[SOCIAL] ({i}/{n}) {dom} links={time.time() - t0:.1f}s "
-                f"followers_extra={time.time() - t_links:.1f}s total={time.time() - t0:.1f}s",
+                f"followers_extra={time.time() - t_links:.1f}s total={time.time() - t0:.1f}s "
+                f"(tiktok skipped)",
                 flush=True,
             )
         else:
@@ -1033,8 +1036,50 @@ def load_existing_channel_map(xlsx_path: Path) -> dict[str, dict]:
             "meta_url": col("Meta Ads URL") or "",
             "linkedin_ads": col("Linkedin Ads", "LinkedIn Ads"),
             "linkedin_search_url": col("Linkedin Ads URL", "LinkedIn Ads URL") or "",
+            "instagram_url": col("Instagram URL") or "",
+            "youtube_url": col("YouTube URL", "Youtube URL") or "",
+            "tiktok_url": col("TikTok URL", "Tiktok URL") or "",
+            "instagram_followers": col("Instagram Followers", "Instagram"),
+            "youtube_followers": col("YouTube Followers", "Youtube Followers", "YouTube"),
+            "tiktok_followers": col("TikTok Followers", "Tiktok Followers"),
         }
     return out
+
+
+def _merge_preserved_channels(
+    metric_rows: list[dict],
+    existing_maps: dict[str, dict],
+    *,
+    keep_meta: bool = False,
+    keep_google: bool = False,
+    keep_linkedin: bool = False,
+    keep_social: bool = False,
+) -> None:
+    """Preserva canais ja coletados quando o modo atual nao os recalcula."""
+    for row in metric_rows:
+        prev = existing_maps.get(row.get("domain") or "", {})
+        if not prev:
+            continue
+        if keep_meta and row.get("meta_ads") is None:
+            row["meta_ads"] = prev.get("meta_ads")
+            row["meta_ads_url"] = prev.get("meta_url") or row.get("meta_ads_url") or ""
+        if keep_google and row.get("google_ads") is None:
+            row["google_ads"] = prev.get("google_ads")
+            row["google_ads_url"] = prev.get("google_ads_url") or row.get("google_ads_url") or ""
+        if keep_linkedin and row.get("linkedin_ads") is None:
+            row["linkedin_ads"] = prev.get("linkedin_ads")
+            row["linkedin_ads_url"] = prev.get("linkedin_search_url") or row.get("linkedin_ads_url") or ""
+        if keep_social:
+            if not row.get("instagram_url") and prev.get("instagram_url"):
+                row["instagram_url"] = prev.get("instagram_url") or ""
+                row["instagram_followers"] = prev.get("instagram_followers")
+            if not row.get("youtube_url") and prev.get("youtube_url"):
+                row["youtube_url"] = prev.get("youtube_url") or ""
+                row["youtube_followers"] = prev.get("youtube_followers")
+            # TikTok: nunca coletamos no chatbot (script ainda nao existe)
+            if prev.get("tiktok_url"):
+                row["tiktok_url"] = prev.get("tiktok_url") or ""
+                row["tiktok_followers"] = prev.get("tiktok_followers")
 
 
 def filtered_sheet(rows: list[list[str]], keep_domains: set[str], include_client: bool = False) -> list[list[str]]:
@@ -1166,7 +1211,7 @@ def write_metrics_xlsx(
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print('Uso: python "5 - metricas concorrentes.py" <cliente> [google_ads|seo|brand|full]')
+        print('Uso: python "5 - metricas concorrentes.py" <cliente> [google_ads|seo|brand|meta|linkedin|social|full]')
         sys.exit(1)
 
     t_all = time.time()
@@ -1179,7 +1224,7 @@ def main() -> None:
 
     client_input = sys.argv[1].strip()
     mode = (sys.argv[2].strip().lower() if len(sys.argv) >= 3 else "full")
-    valid_modes = {"full", "google_ads", "seo", "brand"}
+    valid_modes = {"full", "google_ads", "seo", "brand", "meta", "linkedin", "social"}
     if mode not in valid_modes:
         print(f"ERRO: modo '{mode}' invalido. Opcoes: {', '.join(sorted(valid_modes))}")
         sys.exit(1)
@@ -1206,6 +1251,7 @@ def main() -> None:
     google_ads_map: dict[str, dict] = {}
     linkedin_map: dict[str, dict] = {}
     collect_social = False
+    keep_meta = keep_google = keep_linkedin = keep_social = False
 
     if mode == "full":
         t0 = time.time()
@@ -1229,7 +1275,7 @@ def main() -> None:
         print("[METRICAS] Subetapa Google Ads Transparency (somente este canal) ...", flush=True)
         google_ads_map = load_google_ads_map(metric_entities)
         mark("Google Ads (ScrapingBee)", t0)
-        # preserva outros canais se ja existirem no XLSX
+        keep_meta = keep_linkedin = keep_social = True
         for dom, prev in existing_maps.items():
             meta_map[dom] = {"meta_ads": prev.get("meta_ads"), "meta_url": prev.get("meta_url", "")}
             linkedin_map[dom] = {
@@ -1237,12 +1283,58 @@ def main() -> None:
                 "linkedin_search_url": prev.get("linkedin_search_url", ""),
             }
 
+    elif mode == "meta":
+        t0 = time.time()
+        print("[METRICAS] Subetapa Meta Ads Library (somente este canal) ...", flush=True)
+        meta_map = load_meta_map(metric_entities)
+        mark("Meta Ads (ScrapingBee)", t0)
+        keep_google = keep_linkedin = keep_social = True
+        for dom, prev in existing_maps.items():
+            google_ads_map[dom] = {
+                "google_ads": prev.get("google_ads"),
+                "google_ads_url": prev.get("google_ads_url", ""),
+            }
+            linkedin_map[dom] = {
+                "linkedin_ads": prev.get("linkedin_ads"),
+                "linkedin_search_url": prev.get("linkedin_search_url", ""),
+            }
+
+    elif mode == "linkedin":
+        t0 = time.time()
+        print("[METRICAS] Subetapa LinkedIn Ads (somente este canal) ...", flush=True)
+        linkedin_map = load_linkedin_map(metric_entities)
+        mark("LinkedIn Ads (ScrapingBee)", t0)
+        keep_meta = keep_google = keep_social = True
+        for dom, prev in existing_maps.items():
+            google_ads_map[dom] = {
+                "google_ads": prev.get("google_ads"),
+                "google_ads_url": prev.get("google_ads_url", ""),
+            }
+            meta_map[dom] = {"meta_ads": prev.get("meta_ads"), "meta_url": prev.get("meta_url", "")}
+
+    elif mode == "social":
+        t0 = time.time()
+        print("[METRICAS] Subetapa Instagram + YouTube (sem TikTok) ...", flush=True)
+        collect_social = True
+        keep_meta = keep_google = keep_linkedin = True
+        for dom, prev in existing_maps.items():
+            google_ads_map[dom] = {
+                "google_ads": prev.get("google_ads"),
+                "google_ads_url": prev.get("google_ads_url", ""),
+            }
+            meta_map[dom] = {"meta_ads": prev.get("meta_ads"), "meta_url": prev.get("meta_url", "")}
+            linkedin_map[dom] = {
+                "linkedin_ads": prev.get("linkedin_ads"),
+                "linkedin_search_url": prev.get("linkedin_search_url", ""),
+            }
+        mark("setup maps preservados (social)", t0)
+
     elif mode in ("seo", "brand"):
-        # Semrush ja veio do script 3 (Trafego SEO Marca). Aqui so monta o XLSX do canal.
         print(
             f"[METRICAS] Modo {mode}: reaproveitando SEO/Marca do XLSX nacional (sem ScrapingBee).",
             flush=True,
         )
+        keep_meta = keep_google = keep_linkedin = keep_social = True
         for dom, prev in existing_maps.items():
             google_ads_map[dom] = {
                 "google_ads": prev.get("google_ads"),
@@ -1256,7 +1348,7 @@ def main() -> None:
 
     if mode == "full":
         t0 = time.time()
-        print("[METRICAS] Subetapa redes sociais (homepage + followers) ...", flush=True)
+        print("[METRICAS] Subetapa redes sociais (homepage + followers, sem TikTok) ...", flush=True)
         metric_rows = build_metric_rows(
             metric_entities, traffic_map, meta_map, google_ads_map, linkedin_map, collect_social=True,
         )
@@ -1264,7 +1356,15 @@ def main() -> None:
     else:
         t0 = time.time()
         metric_rows = build_metric_rows(
-            metric_entities, traffic_map, meta_map, google_ads_map, linkedin_map, collect_social=False,
+            metric_entities, traffic_map, meta_map, google_ads_map, linkedin_map, collect_social=collect_social,
+        )
+        _merge_preserved_channels(
+            metric_rows,
+            existing_maps,
+            keep_meta=keep_meta,
+            keep_google=keep_google,
+            keep_linkedin=keep_linkedin,
+            keep_social=keep_social and not collect_social,
         )
         mark(f"Montagem Metricas Canais ({mode})", t0)
 
