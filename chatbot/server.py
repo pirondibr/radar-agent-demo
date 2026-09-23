@@ -96,13 +96,13 @@ def index():
 def hello():
     if DEMO_ONLY:
         greeting = (
-            "Ola! Eu sou o **Radar Agent** (demo publica **v1.0.8**). "
+            "Ola! Eu sou o **Radar Agent** (demo publica **v1.0.9**). "
             "Aqui voce testa o fluxo completo com o exemplo **Chatguru**, "
             "sem scrapes ao vivo."
         )
         ask = (
-            "Digite **demo** (ou qualquer URL) para ver Briefing, Concorrentes, "
-            "Google Ads, SEO e Marca em etapas. A versao paga com analise ao vivo vem em breve."
+            "Digite **demo** para ver Briefing, Concorrentes, Google Ads, SEO e Marca. "
+            "Outras URLs ainda nao rodam neste ambiente (analise ao vivo vem na versao completa)."
         )
         examples = ["demo", "https://chatguru.com.br/"]
     else:
@@ -126,7 +126,7 @@ def hello():
         "examples": examples,
         "steps": STEP_DEFS,
         "demo_only": DEMO_ONLY,
-        "version": "1.0.8",
+        "version": "1.0.9",
     })
 
 
@@ -145,10 +145,28 @@ def chat():
         }), 400
 
     if DEMO_ONLY:
-        # Public demo: always use seeded Chatguru sample
+        # Public demo: only seeded Chatguru — never silently remap other URLs
+        is_demo_request = bool(parsed.demo) or (parsed.slug or "").lower() == "chatguru"
+        if not is_demo_request:
+            return jsonify({
+                "error": (
+                    "Na demo publica so o exemplo **Chatguru** esta disponivel. "
+                    "Digite **demo** para ver o fluxo. "
+                    "Analise ao vivo de outros sites ainda nao roda neste ambiente."
+                ),
+                "parsed": {
+                    "company": parsed.company,
+                    "url": parsed.url,
+                    "slug": parsed.slug,
+                    "competitors": parsed.competitors,
+                    "demo": False,
+                },
+                "demo_only": True,
+            }), 400
         parsed.demo = True
-        parsed.company = parsed.company or "Chatguru (demo)"
+        parsed.company = "Chatguru (demo)"
         parsed.slug = "chatguru"
+        parsed.url = parsed.url or "https://chatguru.com.br/"
 
     job_id = uuid.uuid4().hex[:12]
     job = Job(job_id=job_id, parsed=parsed)
