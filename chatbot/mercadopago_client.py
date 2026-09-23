@@ -34,6 +34,16 @@ def mp_public_key() -> str:
     )
 
 
+def mp_sandbox_mode() -> bool:
+    flag = os.environ.get("MERCADOPAGO_SANDBOX", "").strip().lower()
+    if flag in ("1", "true", "yes"):
+        return True
+    if flag in ("0", "false", "no"):
+        return False
+    token = mp_access_token().upper()
+    return token.startswith("TEST-")
+
+
 def mp_configured() -> bool:
     return bool(mp_access_token())
 
@@ -140,7 +150,7 @@ def create_pro_checkout(
         raise RuntimeError(f"Mercado Pago preference error {resp.status_code}: {resp.text[:500]}")
 
     pref = resp.json()
-    token_is_test = token.upper().startswith("TEST-")
+    token_is_test = mp_sandbox_mode()
     init_point = (
         (pref.get("sandbox_init_point") or pref.get("init_point"))
         if token_is_test
