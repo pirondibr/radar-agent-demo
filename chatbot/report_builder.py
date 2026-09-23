@@ -603,10 +603,16 @@ def build_report_from_xlsx(
                 "meta_ads_url": str(_get(row, idx, "meta ads url") or ""),
                 "linkedin_ads": _safe_int(_get(row, idx, "linkedin ads", "linkedin ads")),
                 "linkedin_ads_url": str(_get(row, idx, "linkedin ads url", "linkedin ads url") or ""),
-                "instagram_followers": _safe_int(_get(row, idx, "instagram followers", "instagram")),
+                "instagram_followers": _safe_int(_get(
+                    row, idx,
+                    "instagram seguidores", "instagram followers", "instagram",
+                )),
                 "instagram_url": str(_get(row, idx, "instagram url") or ""),
-                "youtube_followers": _safe_int(_get(row, idx, "youtube followers", "youtube")),
-                "youtube_url": str(_get(row, idx, "youtube url") or ""),
+                "youtube_followers": _safe_int(_get(
+                    row, idx,
+                    "youtube seguidores", "youtube followers", "youtube", "youtube seguidores",
+                )),
+                "youtube_url": str(_get(row, idx, "youtube url", "youtube url") or ""),
                 "seo_growth": growth.get(dom_key),
                 "brand_growth": brand_growth.get(dom_key),
                 "url": str(_get(row, idx, "url") or ""),
@@ -807,42 +813,59 @@ def build_report_from_xlsx(
         label: str,
         unit: str,
         hook: str,
+        *,
+        include_with_url: bool = False,
     ) -> dict[str, Any]:
-        rows_src = [
-            e for e in entities
-            if (e.get(field) or 0) > 0 or e.get("is_client")
-        ]
-        rows_sorted = sorted(rows_src, key=lambda x: (x.get(field) or 0), reverse=True)
+        rows_src = []
+        for e in entities:
+            val = e.get(field)
+            has_url = bool(str(e.get(url_field) or "").strip())
+            if e.get("is_client") or (val or 0) > 0 or (include_with_url and has_url):
+                rows_src.append(e)
+        rows_sorted = sorted(
+            rows_src,
+            key=lambda x: (
+                1 if (x.get(field) or 0) > 0 else 0,
+                x.get(field) or 0,
+                1 if str(x.get(url_field) or "").strip() else 0,
+            ),
+            reverse=True,
+        )
         total = sum(e.get(field) or 0 for e in rows_sorted)
         max_v = max((e.get(field) or 0 for e in rows_sorted), default=1) or 1
         table = []
         client_rank = None
         for i, e in enumerate(rows_sorted, 1):
-            val = e.get(field) or 0
+            val = e.get(field)
+            has_num = val is not None and int(val or 0) >= 0 and (val or 0) > 0
             if e.get("is_client"):
                 client_rank = i
-            bar = int(round(val / max_v * 100)) if max_v else 1
+            bar = int(round((val or 0) / max_v * 100)) if max_v and (val or 0) else 1
             table.append({
                 "name": e["name"],
                 "domain": e["domain"],
                 "value": val,
-                "value_fmt": _fmt_int(val) if val else "0",
-                "bar": max(bar, 1) if val else 1,
+                "value_fmt": _fmt_int(val) if (val or 0) > 0 else ("n/d" if str(e.get(url_field) or "").strip() else "0"),
+                "bar": max(bar, 1) if (val or 0) > 0 else 1,
                 "url": e.get(url_field) or "",
                 "is_client": bool(e.get("is_client")),
             })
-        leader = rows_sorted[0]["name"] if rows_sorted else "—"
+        leader = next((r["name"] for r in table if (r.get("value") or 0) > 0), None) or (
+            table[0]["name"] if table else "—"
+        )
         client_row = next((r for r in table if r.get("is_client")), None)
         rival = next((r for r in table if not r.get("is_client")), None)
         if client_row and rival:
             body = (
                 f"**{client_label}** tem {client_row['value_fmt']} {unit}. "
-                f"Líder do recorte: **{rival['name']}** com {rival['value_fmt']}."
+                f"No recorte Alto: **{rival['name']}** com {rival['value_fmt']}."
             )
         elif client_row:
             body = f"**{client_label}** aparece com {client_row['value_fmt']} {unit} neste canal."
         else:
             body = f"Ranking de {label} entre cliente e concorrentes Alto."
+        if include_with_url and any(r.get("url") and (r.get("value") or 0) == 0 for r in table if not r.get("is_client")):
+            body += " Perfis encontrados; contagem de seguidores pode ficar n/d quando o scrape bloqueia."
         return {
             "total_fmt": _fmt_int(total) if total else "0",
             "total": total,
@@ -866,10 +889,12 @@ def build_report_from_xlsx(
     ig_section = _count_section(
         "instagram_followers", "instagram_url", "Instagram", "seguidores",
         "Na versão Pro analisamos conteúdo, frequência e o que gera crescimento de seguidores.",
+        include_with_url=True,
     )
     yt_section = _count_section(
         "youtube_followers", "youtube_url", "YouTube", "inscritos",
         "Na versão Pro avaliamos autoridade em vídeo e oportunidades de conteúdo no YouTube.",
+        include_with_url=True,
     )
 
     client_ads_rank = next((i + 1 for i, r in enumerate(gads_table) if r.get("is_client")), None)

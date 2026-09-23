@@ -162,7 +162,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -408,7 +408,7 @@ function startPaidCapture(channel) {
    }
    addBotBubble(
     `Perfeito. Registrei seu ${chosenType} (**${contact}**) para a análise Pro de **${channelLabel}**. `
-    + 'Em até 24h você recebe o relatório. Por enquanto a entrega é manual — o pagamento real vem na próxima etapa.'
+    + 'Em até 24h você recebe o relatório.'
    );
    form.hidden = true;
    node.querySelector('.pay-choice').hidden = true;

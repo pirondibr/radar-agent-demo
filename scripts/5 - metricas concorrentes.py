@@ -1039,9 +1039,9 @@ def load_existing_channel_map(xlsx_path: Path) -> dict[str, dict]:
             "instagram_url": col("Instagram URL") or "",
             "youtube_url": col("YouTube URL", "Youtube URL") or "",
             "tiktok_url": col("TikTok URL", "Tiktok URL") or "",
-            "instagram_followers": col("Instagram Followers", "Instagram"),
-            "youtube_followers": col("YouTube Followers", "Youtube Followers", "YouTube"),
-            "tiktok_followers": col("TikTok Followers", "Tiktok Followers"),
+            "instagram_followers": col("Instagram Seguidores", "Instagram Followers", "Instagram"),
+            "youtube_followers": col("Youtube Seguidores", "YouTube Seguidores", "YouTube Followers", "Youtube Followers", "YouTube"),
+            "tiktok_followers": col("Tiktok Seguidores", "TikTok Followers", "Tiktok Followers"),
         }
     return out
 
