@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+.title>Radar Agent | Consultor de Marketing</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#fafafa;--surface:#fff;--surface-2:#f3f3f6;--surface-3:#eaeaef;--border:#e0e0e6;--text:#111;--text-2:#555568;--text-3:#8c8ca0;--accent:#4f46e5;--accent-2:#6366f1;--accent-bg:rgba(79,70,229,.05);--accent-bg2:rgba(79,70,229,.1);--green:#059669;--green-bg:rgba(5,150,105,.06);--red:#dc2626;--red-bg:rgba(220,38,38,.05);--amber:#b45309;--amber-bg:rgba(180,83,9,.06);--blue:#2563eb;--blue-bg:rgba(37,99,235,.06);--teal:#0d9488;--teal-bg:rgba(13,148,136,.05);--violet:#7c3aed;--violet-bg:rgba(124,58,237,.05);--pink:#c026d3;--pink-bg:rgba(192,38,211,.05);--mono:'JetBrains Mono',monospace;--font:'Inter',system-ui,sans-serif;--radius:12px;--shadow:0 1px 4px rgba(0,0,0,.04)}
+body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;min-height:100vh;display:flex;flex-direction:column}
+::selection{background:var(--accent);color:#fff}
+.top{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.top-logo{display:flex;align-items:center;gap:8px}.top-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900}.top-name{font-weight:800;font-size:14px;letter-spacing:-.2px}
+.top-version{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-bg);border:1px solid rgba(79,70,229,.18);padding:3px 8px;border-radius:6px;letter-spacing:.02em;white-space:nowrap}
+.top-sep{width:1px;height:18px;background:var(--border)}.top-status{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--green);display:flex;align-items:center;gap:5px}.top-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:12px}.top-meta{font-family:var(--mono);font-size:10px;color:var(--text-3)}
+.main{flex:1;max-width:820px;width:100%;margin:0 auto;padding:24px 20px 120px;overflow-y:auto}
+.thread{display:flex;flex-direction:column;gap:0}
+.q-block{margin-bottom:28px}
+.q-block:has(.q-bubble.intro){margin-bottom:20px}
+.q-bubble{
+ display:block;
+ background:#fff;
+ color:#0f172a;
+ padding:18px 20px;
+ border-radius:14px;
+ border:1px solid #e2e8f0;
+ border-left:3px solid var(--accent);
+ font-size:15px;
+ font-weight:500;
+ box-shadow:0 1px 2px rgba(15,23,42,.04);
+ margin-bottom:12px;
+ margin-left:0;
+ max-width:100%;
+ line-height:1.7;
+}
+.q-bubble strong{font-weight:700;color:#0f172a}
+.q-bubble.intro{
+ background:#fff;
+ border-color:#e2e8f0;
+ border-left-width:4px;
+ padding:22px 24px;
+ font-size:16px;
+ color:#0f172a;
+ line-height:1.75;
+}
+.q-bubble.intro strong{color:#0f172a}
+.bot-label{
+ display:inline-flex;
+ align-items:center;
+ gap:8px;
+ font-family:var(--mono);
+ font-size:10px;
+ font-weight:700;
+ text-transform:uppercase;
+ letter-spacing:.08em;
+ color:#64748b;
+ margin-bottom:10px;
+}
+.bot-label .dot{
+ width:8px;height:8px;border-radius:50%;
+ background:linear-gradient(135deg,var(--accent),var(--accent-2));
+}
+.user-bubble{display:inline-flex;align-self:flex-end;margin-left:auto;background:var(--surface-2);color:var(--text);padding:10px 16px;border-radius:20px 20px 6px 20px;font-size:14px;font-weight:500;border:1px solid var(--border);margin-bottom:16px;max-width:85%;line-height:1.5}
+.steps{padding-left:20px;border-left:2px solid var(--border);margin-left:12px;display:flex;flex-direction:column;gap:0;margin-bottom:16px}.step{position:relative;padding:8px 0 8px 20px;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-3)}.step::before{content:'';position:absolute;left:-7px;top:50%;transform:translateY(-50%);width:12px;height:12px;border-radius:50%;background:var(--surface);border:2px solid var(--border)}.step.done::before{background:var(--green);border-color:var(--green)}.step.done{color:var(--text-2)}.step.running::before{background:var(--accent);border-color:var(--accent);animation:pulse 1.2s infinite}.step.running{color:var(--text)}.step.error::before{background:var(--red);border-color:var(--red)}.step-text{font-family:var(--mono);font-size:11px;font-weight:500}.step-tag{font-family:var(--mono);font-size:9px;font-weight:600;padding:2px 6px;border-radius:4px;margin-left:auto}
+.tag-green{background:var(--green-bg);color:var(--green)}.tag-blue{background:var(--blue-bg);color:var(--blue)}.tag-amber{background:var(--amber-bg);color:var(--amber)}.tag-accent{background:var(--accent-bg2);color:var(--accent)}
+.progress-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-left:12px;margin-bottom:16px;box-shadow:var(--shadow)}
+.progress-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.progress-eta{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent);background:var(--accent-bg);padding:4px 10px;border-radius:999px}
+.progress-label{font-size:13px;font-weight:700;color:var(--text)}
+.progress-sub{font-size:11px;color:var(--text-3);font-family:var(--mono);margin-top:2px}
+.progress-bar{height:6px;background:var(--surface-3);border-radius:4px;overflow:hidden;margin-top:10px}
+.progress-bar-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:4px;transition:width .45s ease}
+.answer-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-left:12px;box-shadow:var(--shadow);position:relative;margin-bottom:8px}.answer-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:var(--radius) var(--radius) 0 0}
+.ac-gads::before{background:linear-gradient(90deg,#b45309,#f59e0b)}.ac-seo::before{background:linear-gradient(90deg,#2563eb,#60a5fa)}.ac-brand::before{background:linear-gradient(90deg,#0d9488,#2dd4bf)}.ac-all::before{background:linear-gradient(90deg,var(--accent),var(--accent-2))}.ac-finale::before{background:linear-gradient(90deg,var(--accent),#a855f7,#ec4899)}
+.ac-head{display:flex;align-items:center;gap:8px;margin-bottom:14px}.ac-agent{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:800;flex-shrink:0}.ag-gads{background:linear-gradient(135deg,#b45309,#d97706)}.ag-seo{background:linear-gradient(135deg,#2563eb,#3b82f6)}.ag-brand{background:linear-gradient(135deg,#0d9488,#14b8a6)}.ag-all{background:linear-gradient(135deg,var(--accent),var(--accent-2))}.ag-finale{background:linear-gradient(135deg,var(--accent),#a855f7)}
+.ac-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px}.lb-gads{color:var(--amber)}.lb-seo{color:var(--blue)}.lb-brand{color:var(--teal)}.lb-all{color:var(--accent)}.lb-finale{color:var(--accent)}.ac-text{font-size:14px;color:var(--text-2);line-height:1.7;margin-bottom:16px}.ac-text strong{color:var(--text);font-weight:600}
+.hero-num{display:flex;align-items:baseline;gap:8px;margin-bottom:14px;flex-wrap:wrap}.hero-val{font-family:var(--mono);font-size:36px;font-weight:900;line-height:1}.hero-sub{font-size:12px;color:var(--text-3);font-weight:500}
+.dtable{width:100%;border-collapse:separate;border-spacing:0;margin:8px 0 16px;font-size:13px}.dtable thead th{text-align:left;font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;padding:8px 10px;border-bottom:2px solid var(--border)}.dtable thead th:last-child,.dtable thead th:nth-child(n+3){text-align:right}.dtable tbody td{padding:10px;border-bottom:1px solid var(--surface-2);vertical-align:middle}.dtable tbody tr:hover{background:var(--surface-2)}.dt-pos{font-family:var(--mono);font-size:11px;font-weight:700;width:28px}.dt-pos.gold{color:#b45309}.dt-pos.silver{color:#64748b}.dt-pos.bronze{color:#92400e}.dt-name{font-weight:600;font-size:13px}.dt-val{font-family:var(--mono);font-size:12px;font-weight:600;text-align:right}.dt-grow{font-family:var(--mono);font-size:11px;font-weight:600;padding:2px 6px;border-radius:4px;display:inline-block}.gup{background:var(--green-bg);color:var(--green)}.gdn{background:var(--red-bg);color:var(--red)}.gfl{background:var(--surface-2);color:var(--text-3)}.ghot{background:#059669;color:#fff;font-weight:700}
+.dt-bar{width:100%;height:5px;background:var(--surface-3);border-radius:3px;overflow:hidden;margin-top:3px}.dt-bar-fill{height:100%;border-radius:3px;width:0;transition:width 1s cubic-bezier(.16,1,.3,1)}
+.co{border-radius:10px;padding:14px 16px;margin:12px 0 0;border:1px solid}.co-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}.co-body{font-size:13px;line-height:1.65;color:var(--text-2)}.ci{background:var(--accent-bg);border-color:rgba(79,70,229,.12)}.ci .co-title{color:var(--accent)}.cw{background:var(--amber-bg);border-color:rgba(180,83,9,.12)}.cw .co-title{color:var(--amber)}.cd{background:var(--red-bg);border-color:rgba(220,38,38,.12)}.cd .co-title{color:var(--red)}.cs{background:var(--green-bg);border-color:rgba(5,150,105,.12)}.cs .co-title{color:var(--green)}
+.comp-list{display:flex;flex-direction:column;gap:6px;margin:8px 0 12px}.comp-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface-2);border-radius:8px;font-size:13px}.comp-row.pref{border:1px solid rgba(79,70,229,.25);background:var(--accent-bg)}.comp-row.client{border:1px solid rgba(79,70,229,.3);background:var(--accent-bg)}.comp-num{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text-3);width:22px}.comp-name{font-weight:700;min-width:100px}.comp-meta{font-family:var(--mono);font-size:10px;color:var(--text-3);margin-left:auto}.badge{font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase}.badge-alto{background:var(--green-bg);color:var(--green)}.badge-pref{background:var(--accent-bg2);color:var(--accent)}.badge-client{background:var(--accent-bg2);color:var(--accent)}
+.dtable tbody tr.is-client{background:var(--accent-bg)}
+.dtable tbody tr.is-client .dt-name::after{content:' (voce)';font-weight:500;color:var(--accent);font-size:11px;margin-left:4px}
+.ac-pro-seo::before{background:linear-gradient(90deg,#2563eb,#60a5fa 45%,#4f46e5)}
+.ag-pro-seo{background:linear-gradient(135deg,#2563eb,#4f46e5)}.lb-pro-seo{color:var(--blue)}
+.pro-price.seo{background:linear-gradient(135deg,rgba(37,99,235,.1),rgba(79,70,229,.08));border-color:rgba(37,99,235,.22)}
+.pro-price.seo .cur{color:var(--blue)}
+.pro-q .pill.seo{background:rgba(37,99,235,.12);color:var(--blue)}
+.pro-cta.seo{background:linear-gradient(135deg,rgba(37,99,235,.08),rgba(79,70,229,.06));border-color:rgba(37,99,235,.18)}
+.pro-cta-btn.seo{background:linear-gradient(135deg,#2563eb,#4f46e5);box-shadow:0 2px 10px rgba(37,99,235,.25)}
+.ac-pro-brand::before{background:linear-gradient(90deg,#0d9488,#2dd4bf 45%,#4f46e5)}
+.ag-pro-brand{background:linear-gradient(135deg,#0d9488,#4f46e5)}.lb-pro-brand{color:var(--teal)}
+.pro-price.brand{background:linear-gradient(135deg,rgba(13,148,136,.1),rgba(79,70,229,.08));border-color:rgba(13,148,136,.22)}
+.pro-price.brand .cur{color:var(--teal)}
+.pro-q .pill.brand{background:rgba(13,148,136,.12);color:var(--teal)}
+.pro-cta.brand{background:linear-gradient(135deg,rgba(13,148,136,.08),rgba(79,70,229,.06));border-color:rgba(13,148,136,.18)}
+.pro-cta-btn.brand{background:linear-gradient(135deg,#0d9488,#14b8a6);box-shadow:0 2px 10px rgba(13,148,136,.25)}
+.co-hook{margin-top:8px}
+.channel-chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 16px}
+.channel-chip{font-family:var(--mono);font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text-2)}
+.channel-chip.meta{background:var(--violet-bg);border-color:rgba(124,58,237,.2);color:var(--violet)}
+.channel-chip.ig{background:var(--pink-bg);border-color:rgba(192,38,211,.2);color:var(--pink)}
+.channel-chip.yt{background:var(--red-bg);border-color:rgba(220,38,38,.18);color:var(--red)}
+.channel-chip.tt{background:var(--surface-2);color:var(--text)}
+.channel-chip.li{background:var(--blue-bg);border-color:rgba(37,99,235,.2);color:var(--blue)}
+.finale-price{font-family:var(--mono);font-size:28px;font-weight:900;color:var(--accent);line-height:1}
+.finale-cta{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:8px}
+.finale-btn{border:0;border-radius:12px;padding:14px 22px;background:linear-gradient(135deg,var(--accent),#a855f7);color:#fff;font-weight:800;font-size:14px;cursor:pointer;font-family:inherit;box-shadow:0 4px 16px rgba(79,70,229,.3)}
+.finale-btn:hover{opacity:.92}
+.composer{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent,var(--bg) 28%);padding:16px 20px 20px;z-index:90}
+.composer-inner{max-width:820px;margin:0 auto;display:flex;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:8px;box-shadow:0 8px 30px rgba(0,0,0,.06)}
+.composer input{flex:1;border:0;outline:none;padding:12px 14px;font-size:14px;font-family:inherit;background:transparent;color:var(--text)}
+.composer input::placeholder{color:var(--text-3)}
+.composer button{border:0;border-radius:12px;padding:12px 18px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+.composer button:disabled{opacity:.45;cursor:not-allowed}
+.reveal{opacity:0;transform:translateY(12px);transition:all .45s cubic-bezier(.16,1,.3,1)}.reveal.vis{opacity:1;transform:none}
+.hint{font-size:12px;color:#64748b;margin-top:6px;margin-left:0;line-height:1.6}.hint code{font-family:var(--mono);font-size:11px;background:#f1f5f9;color:#334155;padding:3px 7px;border-radius:5px;border:1px solid #e2e8f0}
+.err-card{background:var(--red-bg);border:1px solid rgba(220,38,38,.2);color:var(--red);padding:14px 16px;border-radius:10px;font-size:13px;margin-left:12px}
+.ac-pro::before{background:linear-gradient(90deg,#b45309,#f59e0b 40%,#4f46e5)}
+.ag-pro{background:linear-gradient(135deg,#b45309,#4f46e5)}.lb-pro{color:var(--amber)}
+.pro-head-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.pro-price{display:inline-flex;align-items:baseline;gap:4px;background:linear-gradient(135deg,rgba(180,83,9,.1),rgba(79,70,229,.08));border:1px solid rgba(180,83,9,.2);padding:6px 12px;border-radius:999px}
+.pro-price .cur{font-size:11px;font-weight:700;color:var(--amber)}.pro-price .val{font-family:var(--mono);font-size:18px;font-weight:900;color:var(--text)}.pro-price .per{font-size:10px;color:var(--text-3);font-weight:500}
+.pro-qs{display:flex;flex-direction:column;gap:8px;margin:14px 0 16px}
+.pro-q{display:flex;align-items:flex-start;gap:10px;width:100%;text-align:left;padding:12px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;color:var(--text-2);line-height:1.45;transition:border-color .15s,background .15s,transform .12s}
+.pro-q:hover{border-color:rgba(180,83,9,.35);background:var(--amber-bg);transform:translateX(2px);color:var(--text)}
+.pro-q .lock{flex-shrink:0;width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#b45309,#d97706);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px}
+.pro-q .qtxt{flex:1}.pro-q .pill{flex-shrink:0;font-family:var(--mono);font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;background:rgba(180,83,9,.12);color:var(--amber);text-transform:uppercase;letter-spacing:.4px;align-self:center}
+.pro-cta{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(180,83,9,.08),rgba(79,70,229,.06));border:1px solid rgba(180,83,9,.18)}
+.pro-cta-text{font-size:13px;color:var(--text-2);line-height:1.5;max-width:420px}.pro-cta-text strong{color:var(--text)}
+.pro-cta-btn{border:0;border-radius:10px;padding:11px 18px;background:linear-gradient(135deg,#b45309,#d97706);color:#fff;font-weight:800;font-size:13px;cursor:pointer;font-family:inherit;white-space:nowrap;box-shadow:0 2px 10px rgba(180,83,9,.25);opacity:.85}
+.pro-cta-btn:hover{opacity:1}
+.pro-toast{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600;display:none}.pro-toast.show{display:block}
+@media(max-width:640px){.main{padding:16px 12px 130px}.dtable{font-size:11px}.hero-val{font-size:28px}.top-meta,.top-sep,.top-status{display:none}.top-version{font-size:9px;padding:2px 6px}.comp-row{flex-wrap:wrap}.pro-cta{flex-direction:column;align-items:stretch}.pro-cta-btn{width:100%;text-align:center}}
+</style>
+</head>
+<body>
+<div class="top">
+ <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar Agent</div><span class="top-version" id="appVersion">v1.0.7</span></div>
+ <div class="top-sep"></div>
+ <div class="top-status" id="topStatus">Pronto</div>
+ <div class="top-right"><div class="top-meta" id="topMeta">MVP Ads + SEO + Marca</div></div>
+</div>
+
+<div class="main"><div class="thread" id="thread"></div></div>
+
+<div class="composer">
+ <div class="composer-inner">
+ <input id="msgInput" type="text" placeholder="Empresa (URL ou nome) e opcionalmente 1 a 3 concorrentes..." autocomplete="off" />
+ <button id="sendBtn" type="button">Enviar</button>
+ </div>
+</div>
+
+<script>
+/* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
+const APP_VERSION = '1.0.7';
+const thread = document.getElementById('thread');
+const input = document.getElementById('msgInput');
+const sendBtn = document.getElementById('sendBtn');
+const topStatus = document.getElementById('topStatus');
+const topMeta = document.getElementById('topMeta');
+const appVersionEl = document.getElementById('appVersion');
+if (appVersionEl) appVersionEl.textContent = 'v' + APP_VERSION;
+document.title = 'Radar Agent v' + APP_VERSION + ' | Consultor de Marketing';
+
+let busy = false;
+let stepDefs = [];
+
+function esc(s) {
+ return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function mdLite(s) {
+ return esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+function reveal(el) {
+ requestAnimationFrame(() => el.classList.add('vis'));
+ el.querySelectorAll('[data-w]').forEach(b => {
+ setTimeout(() => { b.style.width = b.dataset.w + '%'; }, 280);
+ });
+}
+function append(html) {
+ const wrap = document.createElement('div');
+ wrap.innerHTML = html;
+ const node = wrap.firstElementChild;
+ thread.appendChild(node);
+ reveal(node);
+ node.scrollIntoView({ behavior: 'smooth', block: 'end' });
+ return node;
+}
+
+function addBotBubble(text, intro) {
+ const cls = intro ? 'q-bubble intro' : 'q-bubble';
+ return append(`<div class="q-block reveal">
+ <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+ <div class="${cls}">${mdLite(text)}</div>
+ </div>`);
+}
+function addUserBubble(text) {
+ return append(`<div class="q-block reveal" style="display:flex;flex-direction:column"><div class="user-bubble">${esc(text)}</div></div>`);
+}
+
+function medal(i) {
+ if (i === 0) return '<td class="dt-pos gold">🥇</td>';
+ if (i === 1) return '<td class="dt-pos silver">🥈</td>';
+ if (i === 2) return '<td class="dt-pos bronze">🥉</td>';
+ return `<td class="dt-pos">${i + 1}</td>`;
+}
+
+function renderStepsBlock(defs, etaLabel) {
+ const total = (defs && defs.length) ? defs.length : 4;
+ const stepsHtml = defs.map(s => {
+ const tagCls = s.tag_cls === 'green' ? 'tag-green' : s.tag_cls === 'blue' ? 'tag-blue' : s.tag_cls === 'amber' ? 'tag-amber' : 'tag-accent';
+ return `<div class="step" data-step="${esc(s.id)}"><span class="step-text">${esc(s.label)}</span><span class="step-tag ${tagCls}">${esc(s.tag)}</span></div>`;
+ }).join('');
+ return append(`
+ <div class="q-block reveal" id="activePipeline">
+ <div class="q-bubble">Analisando em <strong>${total} etapas</strong>. Os resultados aparecem conforme cada uma termina.</div>
+ <div class="progress-card" id="progressCard">
+ <div class="progress-top">
+ <div>
+ <div class="progress-label" id="progressLabel">Etapa 0/${total}</div>
+ <div class="progress-sub" id="progressDetail">Preparando pipeline...</div>
+ </div>
+ <div class="progress-eta" id="progressEta">Esta etapa: ${esc(etaLabel || '~2 min')}</div>
+ </div>
+ <div class="progress-bar"><div class="progress-bar-fill" id="progressFill" style="width:0%"></div></div>
+ </div>
+ <div class="steps" id="stepsList">${stepsHtml}</div>
+ </div>`);
+}
+
+let stageProgressTimer = null;
+
+function clearStageProgressTimer() {
+ if (stageProgressTimer) {
+ clearInterval(stageProgressTimer);
+ stageProgressTimer = null;
+ }
+}
+
+function startStageBar(etaSeconds) {
+ clearStageProgressTimer();
+ const fill = document.getElementById('progressFill');
+ if (!fill) return;
+ const etaMs = Math.max(8000, (Number(etaSeconds) || 120) * 1000);
+ const started = Date.now();
+ fill.style.width = '4%';
+ stageProgressTimer = setInterval(() => {
+ const t = (Date.now() - started) / etaMs;
+ // Avanca na etapa atual ate ~90%; o done leva a 100%
+ const pct = Math.min(90, 4 + t * 86);
+ fill.style.width = pct.toFixed(1) + '%';
+ }, 400);
+}
+
+function finishStageBar() {
+ clearStageProgressTimer();
+ const fill = document.getElementById('progressFill');
+ if (fill) fill.style.width = '100%';
+}
+
+function updateProgressUI(msg) {
+ const label = document.getElementById('progressLabel');
+ const detail = document.getElementById('progressDetail');
+ const eta = document.getElementById('progressEta');
+ if (msg.eta_label && eta) eta.textContent = 'Esta etapa: ' + msg.eta_label;
+ if (msg.progress_label && label) label.textContent = msg.progress_label;
+ if (msg.detail && detail) detail.textContent = msg.detail;
+ if (msg.state === 'running') startStageBar(msg.eta_seconds);
+ else if (msg.state === 'done') finishStageBar();
+}
+
+function updateSteps(steps) {
+ if (!steps) return;
+ Object.entries(steps).forEach(([id, info]) => {
+ const el = document.querySelector(`.step[data-step="${id}"]`);
+ if (!el) return;
+ el.classList.remove('done', 'running', 'error');
+ if (info.state === 'done') el.classList.add('done');
+ if (info.state === 'running') el.classList.add('running');
+ if (info.state === 'error') el.classList.add('error');
+ if (info.detail) {
+ const t = el.querySelector('.step-text');
+ if (t) t.textContent = info.detail.length > 70 ? info.detail.slice(0, 70) + '…' : info.detail;
+ }
+ });
+}
+
+const PRO_QUESTIONS_ADS = [
+ 'Avalie e compare a minha campanha de Google ads com a concorrência?',
+ 'Qual é o modelo de anúncio de mais sucesso que eu não uso?',
+ 'Quais anúncios poderiam me fazer ganhar dinheiro e não estou utilizando?',
+ 'Me mostre os top 3 anúncios do top 1',
+];
+
+const PRO_QUESTIONS_SEO = [
+ 'Por que meu site está caindo em visitas?',
+ 'Por que meu concorrente está crescendo mais do que eu?',
+];
+
+const PRO_QUESTIONS_BRAND = [
+ 'Por que essa empresa está crescendo mais do que a minha?',
+ 'Por que ele é um líder de mercado?',
+ 'Quais são seus diferenciais?',
+ 'Por que minha empresa não está crescendo?',
+];
+
+function showProToast(root) {
+ const toast = root.querySelector('.pro-toast');
+ if (!toast) return;
+ toast.textContent = 'Disponível na versão Pro (R$ 99). Pagamento em breve.';
+ toast.classList.add('show');
+ clearTimeout(root._proToastTimer);
+ root._proToastTimer = setTimeout(() => toast.classList.remove('show'), 3200);
+}
+
+function renderProTeaser(opts) {
+ const {
+ channel = 'ads',
+ questions = PRO_QUESTIONS_ADS,
+ bubble = 'Quer ir além do ranking? Na <strong>versão Pro</strong> você pergunta sobre os anúncios reais da concorrência.',
+ label = 'Radar Pro Google Ads profundo',
+ blurb = 'Exemplos de perguntas desbloqueadas na versao paga, por enquanto só visual:',
+ ctaText = 'Desbloqueie comparação de campanhas, modelos de anúncio e os <strong>top anúncios</strong> do líder do nicho.',
+ } = opts || {};
+
+ const theme = channel === 'seo' ? 'seo' : (channel === 'brand' ? 'brand' : '');
+ const cardCls = channel === 'seo' ? 'ac-pro-seo' : (channel === 'brand' ? 'ac-pro-brand' : 'ac-pro');
+ const agentCls = channel === 'seo' ? 'ag-pro-seo' : (channel === 'brand' ? 'ag-pro-brand' : 'ag-pro');
+ const labelCls = channel === 'seo' ? 'lb-pro-seo' : (channel === 'brand' ? 'lb-pro-brand' : 'lb-pro');
+
+ const qs = questions.map((q) => `
+ <button type="button" class="pro-q" data-pro-q="${esc(q)}">
+ <span class="lock" aria-hidden="true">&#128274;</span>
+ <span class="qtxt">${esc(q)}</span>
+ <span class="pill ${theme}">Pro</span>
+ </button>`).join('');
+
+ const node = append(`
+ <div class="q-block reveal">
+ <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+ <div class="q-bubble">${bubble}</div>
+ <div class="answer-card ${cardCls}">
+ <div class="pro-head-row">
+ <div class="ac-head" style="margin-bottom:0">
+ <div class="ac-agent ${agentCls}">P</div>
+ <div class="ac-label ${labelCls}">${esc(label)}</div>
+ </div>
+ <div class="pro-price ${theme}"><span class="cur">R$</span><span class="val">99</span><span class="per">/análise</span></div>
+ </div>
+ <div class="ac-text" style="margin-top:12px;margin-bottom:4px">${esc(blurb)}</div>
+ <div class="pro-qs">${qs}</div>
+ <div class="pro-cta ${theme}">
+ <div class="pro-cta-text">${ctaText}</div>
+ <button type="button" class="pro-cta-btn ${theme}" data-pro-cta>Desbloquear por R$ 99</button>
+ </div>
+ <div class="pro-toast" role="status"></div>
+ </div>
+ </div>`);
+
+ node.querySelectorAll('[data-pro-q], [data-pro-cta]').forEach((btn) => {
+ btn.addEventListener('click', () => showProToast(node));
+ });
+}
+
+function analysisBlocks(channel, analysisTitle, insight, proHook) {
+ const coClass = channel === 'seo' ? 'ci' : (channel === 'brand' ? 'cs' : 'cw');
+ return `
+ <div class="co ${coClass}"><div class="co-title">${esc(analysisTitle || 'Analise Cliente vs concorrentes')}</div>
+ <div class="co-body">${esc(insight || '')}</div></div>
+ ${proHook ? `<div class="co ci co-hook"><div class="co-title">Versão Pro</div><div class="co-body">${esc(proHook)}</div></div>` : ''}
+ `;
+}
+
+function renderProFinale() {
+ const node = append(`
+ <div class="q-block reveal">
+ <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+ <div class="q-bubble">O gratuito mostrou Ads, SEO e Marca. Na <strong>versão Pro</strong> abrimos o restante do radar de canais.</div>
+ <div class="answer-card ac-finale">
+ <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Radar Pro Todos os canais</div></div>
+ <div class="hero-num">
+ <div class="finale-price">R$ 99</div>
+ <div class="hero-sub">por analise completa, desbloqueie o mapa multi-canal</div>
+ </div>
+ <div class="ac-text">
+ Além do que você já viu, a versão Pro inclui a análise dos demais canais de marketing
+ da concorrência para entender onde o mercado investe e onde você ainda não aparece.
+ </div>
+ <div class="channel-chips">
+ <span class="channel-chip meta">Meta Ads</span>
+ <span class="channel-chip ig">Instagram</span>
+ <span class="channel-chip yt">YouTube</span>
+ <span class="channel-chip tt">TikTok</span>
+ <span class="channel-chip li">LinkedIn</span>
+ </div>
+ <div class="finale-cta">
+ <div class="pro-cta-text" style="max-width:380px">
+ Uma leitura unificada: anúncios pagos + orgânico social + marca com perguntas
+ estratégicas liberadas em cada canal.
+ </div>
+ <button type="button" class="finale-btn" data-pro-cta>Quero a versao Pro R$ 99</button>
+ </div>
+ <div class="pro-toast" role="status"></div>
+ </div>
+ </div>`);
+ node.querySelectorAll('[data-pro-cta]').forEach((btn) => {
+ btn.addEventListener('click', () => showProToast(node));
+ });
+}
+
+function renderBriefingCompetitors(payload) {
+ const data = payload || {};
+ const d = data.briefing || data;
+ const rawComps = data.competitors || [];
+ const comps = (() => {
+ const client = rawComps.filter(c => c.is_client);
+ const altos = rawComps.filter(c => !c.is_client && String(c.similaridade || '').trim().toLowerCase() === 'alto').slice(0, 10);
+ return client.slice(0, 1).concat(altos);
+ })();
+ const client = data.client || d.client || '';
+ const compRows = comps.map((c, i) => `
+ <div class="comp-row ${c.is_client ? 'client' : (c.preferred ? 'pref' : '')}">
+ <span class="comp-num">${i + 1}</span>
+ <span class="comp-name">${esc(c.name)}</span>
+ ${c.is_client ? '<span class="badge badge-client">cliente</span>' : ''}
+ ${c.preferred ? '<span class="badge badge-pref">sugerido</span>' : ''}
+ <span class="badge badge-alto">${esc(c.is_client ? 'Você' : (c.similaridade || ' '))}</span>
+ <span class="comp-meta">${esc(c.domain)}${c.nicho ? ', ' + esc(c.nicho) : ''}</span>
+ </div>`).join('');
+ const nComp = comps.filter(c => !c.is_client).length;
+ append(`
+ <div class="q-block reveal">
+ <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+ <div class="q-bubble">Etapa 1/4: Briefing e concorrentes mapeados</div>
+ <div class="answer-card ac-all">
+ <div class="ac-head"><div class="ac-agent ag-all">R</div><div class="ac-label lb-all">Briefing Cliente</div></div>
+ <div class="hero-num"><div class="hero-val" style="color:var(--accent);font-size:28px">${esc(d.client || client || 'Cliente')}</div>
+ <div class="hero-sub">${esc(d.nicho || 'nicho em analise')}${d.escopo ? ', ' + esc(d.escopo) : ''}</div></div>
+ <div class="ac-text">${mdLite(d.summary || '')}</div>
+ ${d.url ? `<div class="hint">URL: <code>${esc(d.url)}</code></div>` : ''}
+ <div class="ac-head" style="margin-top:20px"><div class="ac-agent ag-all">C</div><div class="ac-label lb-all">Concorrentes Unificado</div></div>
+ <div class="hero-num"><div class="hero-val" style="color:var(--accent)">${nComp}</div><div class="hero-sub">concorrentes + você (${esc(client)}) no mesmo radar</div></div>
+ <div class="ac-text">Incluímos <strong>${esc(client)}</strong> na lista para comparar lado a lado com o mercado.</div>
+ <div class="comp-list">${compRows || '<div class="ac-text">Nenhum concorrente encontrado.</div>'}</div>
+ </div>
+ </div>`);
+}
+
+function renderAdsSection(gads, client) {
+ gads = gads || {};
+ const gRows = (gads.rows || []).map((r, i) => `
+ <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}<td class="dt-name">${esc(r.name)}</td><td class="dt-val">${esc(r.ads_fmt)}</td><td class="dt-val">${esc(r.investimento_fmt)}</td><td class="dt-val">${esc(r.pct_fmt)}</td></tr>`).join('');
+ const adsRank = gads.client_rank ? `, voce em ${gads.client_rank}º` : '';
+ append(`
+ <div class="q-block reveal">
+ <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+ <div class="q-bubble">Etapa 2/4: Quem esta investindo mais em Google Ads?</div>
+ <div class="answer-card ac-gads">
+ <div class="ac-head"><div class="ac-agent ag-gads">G</div><div class="ac-label lb-gads">Google Ads Ranking</div></div>
+ <div class="hero-num"><div class="hero-val" style="color:var(--amber)">${esc(gads.total_invest_fmt || 'R$ 0')}</div><div class="hero-sub">investidos/mes estimado, ${esc(gads.total_ads_fmt || '0')} anuncios${esc(adsRank)}</div></div>
+ <div class="ac-text">Cliente e concorrentes no mesmo ranking. Estimativa: R$ 1.500 por anuncio ativo (Transparency).</div>
+ <div style="overflow-x:auto"><table class="dtable">
+ <thead><tr><th>#</th><th>Empresa</th><th>Anuncios</th><th style="text-align:right">Investimento</th><th style="text-align:right">% do Total</th></tr></thead>
+ <tbody>${gRows || '<tr><td colspan="5" class="dt-name">Sem dados de Google Ads</td></tr>'}</tbody>
+ </table></div>
+ ${analysisBlocks('ads', gads.analysis_title, gads.insight, gads.pro_hook)}
+ </div>
+ </div>`);
+ renderProTeaser({
+ channel: 'ads',
+ questions: PRO_QUESTIONS_ADS,
+ bubble: 'Quer ir além do ranking? Na <strong>versão Pro</strong> você pergunta sobre os anúncios reais da concorrência.',
+ label: 'Radar Pro Google Ads profundo',
+ blurb: 'Exemplos de perguntas desbloqueadas na versao paga, por enquanto só visual:',
+ ctaText: 'Desbloqueie comparação de campanhas, modelos de anúncio e os <strong>top anúncios</strong> do líder do nicho.',
+ });
+}
+
+function renderSeoSection(seo, client) {
+ seo = seo || {};
+ const sRows = (seo.rows || []).map((r, i) => {
+ const growCls = (!r.growth_fmt || r.growth_fmt === 'n/d' || r.growth_fmt === ' ') ? 'gfl' : (r.growth_hot ? 'ghot' : (r.growth_up ? 'gup' : 'gdn'));
+ return `<tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}<td class="dt-name">${esc(r.name)}</td><td class="dt-val">${esc(r.traffic_fmt)}</td>
+ <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,#2563eb,#60a5fa)"></div></div></td>
+ <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td></tr>`;
+ }).join('');
+ const seoRank = seo.client_rank ? `, voce em ${seo.client_rank}º` : '';
+ append(`
+ <div class="q-block reveal">
+ <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+ <div class="q-bubble">Etapa 3/4: Quem esta dominando o SEO organico?</div>
+ <div class="answer-card ac-seo">
+ <div class="ac-head"><div class="ac-agent ag-seo">S</div><div class="ac-label lb-seo">SEO Organico Ranking</div></div>
+ <div class="hero-num"><div class="hero-val" style="color:var(--blue)">${esc(seo.total_traffic_fmt || ' ')}</div><div class="hero-sub">visitas organicas/mes, ${esc(seo.leader || ' ')} lidera${esc(seoRank)}</div></div>
+ <div class="ac-text">Trafego organico (Semrush) com <strong>${esc(client || '')}</strong> incluso para comparar crescimento e participacao.</div>
+ <div style="overflow-x:auto"><table class="dtable">
+ <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Trafego</th><th>Participacao</th><th style="text-align:right">Crescimento</th></tr></thead>
+ <tbody>${sRows || '<tr><td colspan="5" class="dt-name">Sem dados de SEO</td></tr>'}</tbody>
+ </table></div>
+ ${analysisBlocks('seo', seo.analysis_title, seo.insight, seo.pro_hook)}
+ </div>
+ </div>`);
+ renderProTeaser({
+ channel: 'seo',
+ questions: PRO_QUESTIONS_SEO,
+ bubble: 'Quer entender a <strong>curva de visitas</strong>? Na versão Pro investigamos queda e crescimento com profundidade.',
+ label: 'Radar Pro SEO profundo',
+ blurb: 'Exemplos de perguntas desbloqueadas na versao paga, por enquanto só visual:',
+ ctaText: 'Desbloqueie o diagnóstico de <strong>queda de tráfego</strong> e o que faz o concorrente crescer mais que você.',
+ });
+}
+
+function renderBrandSection(brand, client) {
+ brand = brand || {};
+ const bRows = (brand.rows || []).map((r, i) => {
+ const growCls = (!r.growth_fmt || r.growth_fmt === 'n/d' || r.growth_fmt === ' ') ? 'gfl' : (r.growth_hot ? 'ghot' : (r.growth_up ? 'gup' : 'gdn'));
+ return `<tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}<td class="dt-name">${esc(r.name)}</td><td class="dt-val">${esc(r.traffic_fmt)}</td>
+ <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,#0d9488,#2dd4bf)"></div></div></td>
+ <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td></tr>`;
+ }).join('');
+ const brandRank = brand.client_rank ? `, voce em ${brand.client_rank}º` : '';
+ append(`
+ <div class="q-block reveal">
+ <div class="bot-label"><span class="dot"></span>Radar Agent</div>
+ <div class="q-bubble">Etapa 4/4: Qual e a marca mais reconhecida do mercado?</div>
+ <div class="answer-card ac-brand">
+ <div class="ac-head"><div class="ac-agent ag-brand">B</div><div class="ac-label lb-brand">Brand Search Ranking</div></div>
+ <div class="hero-num"><div class="hero-val" style="color:var(--teal)">${esc(brand.total_traffic_fmt || ' ')}</div><div class="hero-sub">buscas de marca/mes, ${esc(brand.leader || ' ')} lidera${esc(brandRank)}</div></div>
+ <div class="ac-text">Volume de busca pela marca (Semrush) termometro de awareness. <strong>${esc(client || '')}</strong> incluso no ranking.</div>
+ <div style="overflow-x:auto"><table class="dtable">
+ <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Buscas/mes</th><th>Participacao</th><th style="text-align:right">Crescimento</th></tr></thead>
+ <tbody>${bRows || '<tr><td colspan="5" class="dt-name">Sem dados de marca</td></tr>'}</tbody>
+ </table></div>
+ ${analysisBlocks('brand', brand.analysis_title, brand.insight, brand.pro_hook)}
+ </div>
+ </div>`);
+ renderProTeaser({
+ channel: 'brand',
+ questions: PRO_QUESTIONS_BRAND,
+ bubble: 'Quer entender <strong>awareness e diferenciais</strong>? Na versão Pro aprofundamos liderança de marca.',
+ label: 'Radar Pro Marca profundo',
+ blurb: 'Exemplos de perguntas desbloqueadas na versao paga, por enquanto só visual:',
+ ctaText: 'Desbloqueie por que o líder cresce mais, quais são os <strong>diferenciais</strong> e o que trava o crescimento da sua marca.',
+ });
+}
+
+function handlePartial(msg) {
+ const section = msg.section;
+ const data = msg.data || {};
+ const client = msg.client || data.client || '';
+ if (section === 'briefing_concorrentes') {
+ renderBriefingCompetitors(data);
+ } else if (section === 'briefing') {
+ renderBriefingCompetitors({ briefing: data, competitors: [], client: data.client || client });
+ } else if (section === 'competitors') {
+ renderBriefingCompetitors({
+ briefing: { client: client, summary: 'Concorrentes mapeados.', nicho: '', escopo: '', url: '' },
+ competitors: data.competitors || [],
+ competitors_count: data.competitors_count,
+ client,
+ });
+ } else if (section === 'competitors_pending') {
+ append(`<div class="q-block reveal"><div class="q-bubble">${mdLite(data.message || 'Concorrentes mapeados. Coletando metricas...')}</div></div>`);
+ }
+ else if (section === 'google_ads') renderAdsSection(data, client);
+ else if (section === 'seo') renderSeoSection(data, client);
+ else if (section === 'brand') renderBrandSection(data, client);
+}
+
+function renderReport(report) {
+ if (!report) return;
+ renderBriefingCompetitors({
+ client: report.client,
+ briefing: report.briefing || { client: report.client, summary: 'Briefing pronto.' },
+ competitors: report.competitors || [],
+ competitors_count: report.competitors_count,
+ });
+ renderAdsSection(report.google_ads, report.client);
+ renderSeoSection(report.seo, report.client);
+ renderBrandSection(report.brand, report.client);
+ renderProFinale();
+ addBotBubble('Pronto. Quer analisar outra empresa? Envie uma nova URL, ou digite **demo** para ver o exemplo Chatguru.');
+}
+
+async function boot() {
+ try {
+ const res = await fetch('/api/hello');
+ const data = await res.json();
+ stepDefs = data.steps || [];
+ addBotBubble(data.greeting, true);
+ setTimeout(() => {
+ const askNode = addBotBubble(data.ask, true);
+ const hint = document.createElement('div');
+ hint.className = 'hint';
+ hint.innerHTML = 'Exemplos: <code>demo</code>, <code>https://chatguru.com.br/</code>, <code>empresa.com.br concorrentes: a, b</code>';
+ askNode.appendChild(hint);
+ }, 450);
+ } catch (e) {
+ addBotBubble('Nao consegui iniciar. Verifique se o servidor esta rodando.');
+ }
+}
+
+function setBusy(v) {
+ busy = v;
+ sendBtn.disabled = v;
+ input.disabled = v;
+ topStatus.textContent = v ? 'Analisando...' : 'Pronto';
+}
+
+async function sendMessage() {
+ const text = input.value.trim();
+ if (!text || busy) return;
+ input.value = '';
+ addUserBubble(text);
+ setBusy(true);
+
+ let jobId;
+ try {
+ const res = await fetch('/api/chat', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({ message: text }),
+ });
+ const data = await res.json();
+ if (!res.ok) {
+ append(`<div class="q-block reveal"><div class="err-card">${esc(data.error || 'Erro')}</div></div>`);
+ setBusy(false);
+ return;
+ }
+ jobId = data.job_id;
+ stepDefs = data.steps || stepDefs;
+ const p = data.parsed || {};
+ topMeta.textContent = `${p.company || p.slug || 'cliente'}${p.demo ? ' (demo)' : ''}`;
+ addBotBubble(data.ack);
+ const first = stepDefs[0] || {};
+ const etaSec = p.demo ? (first.eta_demo || 10) : (first.eta_live || 120);
+ const etaGuess = etaSec >= 60 ? ('~' + Math.round(etaSec / 60) + ' min') : ('~' + etaSec + 's');
+ renderStepsBlock(stepDefs, etaGuess);
+ } catch (e) {
+ append(`<div class="q-block reveal"><div class="err-card">${esc(e.message)}</div></div>`);
+ setBusy(false);
+ return;
+ }
+
+ let gotPartial = false;
+ const es = new EventSource(`/api/jobs/${jobId}/events`);
+ es.onmessage = (ev) => {
+ let msg;
+ try { msg = JSON.parse(ev.data); } catch { return; }
+ if (msg.type === 'pipeline_meta') {
+ updateProgressUI({
+ eta_label: msg.eta_label,
+ progress_label: 'Etapa 0/' + (msg.total_steps || 4),
+ detail: msg.mode === 'live' ? 'Pipeline ao vivo iniciada...' : (msg.mode === 'demo' ? 'Modo demo...' : 'Carregando dados...'),
+ index: 0,
+ total: msg.total_steps || 4,
+ state: 'running',
+ });
+ }
+ if (msg.type === 'step' || msg.type === 'snapshot') {
+ updateSteps(msg.steps);
+ }
+ if (msg.type === 'progress') {
+ updateSteps(msg.steps);
+ updateProgressUI(msg);
+ if (msg.progress_label) topStatus.textContent = msg.progress_label;
+ }
+ if (msg.type === 'partial') {
+ gotPartial = true;
+ handlePartial(msg);
+ }
+ if (msg.type === 'complete') {
+ updateSteps(msg.steps || {});
+ document.querySelectorAll('#stepsList .step').forEach(s => s.classList.add('done'));
+ clearStageProgressTimer();
+ const fill = document.getElementById('progressFill');
+ const label = document.getElementById('progressLabel');
+ const detail = document.getElementById('progressDetail');
+ if (fill) fill.style.width = '100%';
+ if (label) label.textContent = 'Etapa 4/4';
+ if (detail) detail.textContent = 'Analise concluida';
+ const etaEl = document.getElementById('progressEta');
+ if (etaEl) etaEl.textContent = 'Concluido';
+ if (!gotPartial && msg.report) {
+ renderReport(msg.report);
+ } else {
+ renderProFinale();
+ addBotBubble('Pronto. Quer analisar outra empresa? Envie uma nova URL, ou digite **demo** para ver o exemplo Chatguru.');
+ }
+ es.close();
+ setBusy(false);
+ }
+ if (msg.type === 'error') {
+ append(`<div class="q-block reveal"><div class="err-card">${esc(msg.message || 'Falha na pipeline')}</div></div>`);
+ es.close();
+ setBusy(false);
+ }
+ };
+ es.onerror = () => {
+ // browser retries; if job already done, stop
+ };
+}
+
+sendBtn.addEventListener('click', sendMessage);
+input.addEventListener('keydown', (e) => {
+ if (e.key === 'Enter') sendMessage();
+});
+
+boot();
+</script>
+</body>
+</html>

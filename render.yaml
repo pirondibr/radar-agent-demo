@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: radar-agent-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r chatbot/requirements.txt
+    startCommand: gunicorn -b 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 120 --chdir chatbot server:app
+    envVars:
+      - key: DEMO_ONLY
+        value: "1"
+      - key: PYTHON_VERSION
+        value: "3.12.0"

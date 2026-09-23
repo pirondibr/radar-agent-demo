@@ -1,0 +1,32 @@
+outputs/
+!outputs/metricas/
+!outputs/metricas/chatguru/
+!outputs/metricas/chatguru/**
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local duplicates / reference dumps
+chatbot - Copia/
+radar_v2_*.html
+/1- entender o cliente.py
+/3 - concorrentes Geral.py
+/5 - metricas concorrentes.py
+
+*.log
+.pytest_cache/
