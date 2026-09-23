@@ -82,6 +82,15 @@ REVEAL_PAUSE = {
     "brand": 1.4,
 }
 
+# Demo publica: revelacao mais rapida
+if __import__("os").environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes"):
+    REVEAL_PAUSE = {
+        "briefing_concorrentes": 0.6,
+        "google_ads": 0.7,
+        "seo": 0.6,
+        "brand": 0.6,
+    }
+
 
 def find_metricas_xlsx(slug: str) -> Optional[Path]:
     folder = METRICAS_DIR / slug

@@ -1,0 +1,4 @@
+# Vercel nao e o host do Radar Agent (SSE + jobs longos).
+# O demo publico sobe no Render via render.yaml.
+# Este arquivo so documenta a escolha — deploy: README.md
+{}
