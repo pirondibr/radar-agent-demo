@@ -15,13 +15,14 @@ from report_builder import (
     build_report_from_xlsx,
 )
 
-FINAL_DIR = Path(r"C:\Users\Usuario\Desktop\Radar 09 2026\scripts")
+CHATBOT_DIR = Path(__file__).resolve().parent
+RADAR_ROOT = CHATBOT_DIR.parent
+FINAL_DIR = RADAR_ROOT / "scripts"
 SCRIPT_ENTENDER = FINAL_DIR / "1- entender o cliente.py"
 SCRIPT_CONCORRENTES = FINAL_DIR / "3 - concorrentes Geral.py"
 SCRIPT_GOOGLE_ADS = FINAL_DIR / "5a - google ads.py"
 SCRIPT_SEO = FINAL_DIR / "5b - seo organico.py"
 SCRIPT_BRAND = FINAL_DIR / "5c - brand search.py"
-RADAR_ROOT = FINAL_DIR.parent
 METRICAS_DIR = RADAR_ROOT / "outputs" / "metricas"
 BRIEFING_DIR = RADAR_ROOT / "outputs" / "entender"
 CONCORRENTES_DIR = RADAR_ROOT / "outputs" / "concorrentes"

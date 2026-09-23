@@ -96,7 +96,7 @@ def index():
 def hello():
     if DEMO_ONLY:
         greeting = (
-            "Ola! Eu sou o **Radar Agent** (demo publica **v1.0.7**). "
+            "Ola! Eu sou o **Radar Agent** (demo publica **v1.0.8**). "
             "Aqui voce testa o fluxo completo com o exemplo **Chatguru**, "
             "sem scrapes ao vivo."
         )
@@ -126,7 +126,7 @@ def hello():
         "examples": examples,
         "steps": STEP_DEFS,
         "demo_only": DEMO_ONLY,
-        "version": "1.0.7",
+        "version": "1.0.8",
     })
 
 
@@ -147,9 +147,8 @@ def chat():
     if DEMO_ONLY:
         # Public demo: always use seeded Chatguru sample
         parsed.demo = True
-        if not parsed.company:
-            parsed.company = "Chatguru (demo)"
-        parsed.slug = parsed.slug or "chatguru"
+        parsed.company = parsed.company or "Chatguru (demo)"
+        parsed.slug = "chatguru"
 
     job_id = uuid.uuid4().hex[:12]
     job = Job(job_id=job_id, parsed=parsed)
