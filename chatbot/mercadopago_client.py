@@ -140,6 +140,12 @@ def create_pro_checkout(
         raise RuntimeError(f"Mercado Pago preference error {resp.status_code}: {resp.text[:500]}")
 
     pref = resp.json()
+    token_is_test = token.upper().startswith("TEST-")
+    init_point = (
+        (pref.get("sandbox_init_point") or pref.get("init_point"))
+        if token_is_test
+        else (pref.get("init_point") or pref.get("sandbox_init_point"))
+    )
     order = {
         "id": order_id,
         "created_at": time.time(),
@@ -152,12 +158,13 @@ def create_pro_checkout(
         "amount": PRO_PRICE,
         "currency": "BRL",
         "preference_id": pref.get("id"),
-        "init_point": pref.get("init_point") or pref.get("sandbox_init_point"),
+        "init_point": init_point,
         "sandbox_init_point": pref.get("sandbox_init_point"),
         "payment_id": "",
         "paid_at": None,
         "contact_type": "",
         "contact": "",
+        "sandbox": token_is_test,
     }
     save_order(order)
     return {
