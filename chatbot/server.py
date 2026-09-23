@@ -59,7 +59,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.2"
 
 REQUIRED_LIVE_KEYS = (
     "OPENROUTER_API_KEY",
@@ -157,39 +157,24 @@ def index():
 def hello():
     keys = _live_keys_ready()
     live_ok = (not DEMO_ONLY) and all(keys.values())
+    greeting = (
+        "Olá! Eu sou o Agente de IA **Radar da Concorrência**. "
+        "Eu posso analisar os canais de marketing da sua empresa e dos "
+        "seus concorrentes, e te mostrar onde você está ganhando ou perdendo "
+        "espaço e dinheiro no seu nicho."
+    )
+    ask = "Para iniciarmos, envie o endereço do seu site logo abaixo."
     if DEMO_ONLY:
-        greeting = (
-            f"Ola! Eu sou o **Radar Agent** (demo publica **v{APP_VERSION}**). "
-            "Aqui voce testa o fluxo completo com o exemplo **Chatguru**, "
-            "sem scrapes ao vivo."
-        )
-        ask = (
-            "Digite **demo** para ver Briefing, Concorrentes, Google Ads, SEO e Marca. "
-            "Outras URLs ainda nao rodam neste ambiente."
-        )
-        examples = ["demo", "https://chatguru.com.br/"]
+        examples = ["https://www.mendesortega.com.br/"]
+    elif live_ok:
+        examples = ["https://www.mendesortega.com.br/"]
     else:
-        greeting = (
-            f"Ola! Eu sou o **Radar Agent** (**v{APP_VERSION}**). "
-            "Analiso a concorrencia e os canais de marketing da sua empresa ao vivo."
+        missing = ", ".join(_missing_live_keys())
+        ask = (
+            "Para iniciarmos, envie o endereço do seu site logo abaixo. "
+            f"(Servidor ainda sem todas as API keys: {missing}.)"
         )
-        if live_ok:
-            ask = (
-                "Envie a **URL do site** (ex: https://www.mendesortega.com.br/). "
-                "Opcional: 1 a 3 concorrentes. Digite **demo** para o exemplo Chatguru (sem scrape)."
-            )
-        else:
-            missing = ", ".join(_missing_live_keys())
-            ask = (
-                "Live ainda sem todas as API keys no servidor "
-                f"(faltam: {missing}). Digite **demo** para o exemplo Chatguru, "
-                "ou configure as keys no Render Environment."
-            )
-        examples = [
-            "https://www.mendesortega.com.br/",
-            "demo",
-            "https://chatguru.com.br/",
-        ]
+        examples = ["https://www.mendesortega.com.br/"]
     return jsonify({
         "greeting": greeting,
         "ask": ask,
@@ -225,8 +210,8 @@ def chat():
         if not is_demo_request:
             return jsonify({
                 "error": (
-                    "Neste modo so o exemplo **Chatguru** esta disponivel. "
-                    "Digite **demo** ou configure DEMO_ONLY=0 + API keys para live."
+                    "Neste ambiente a analise ao vivo ainda nao esta liberada. "
+                    "Configure DEMO_ONLY=0 + API keys para analisar o seu site."
                 ),
                 "parsed": {
                     "company": parsed.company,
@@ -248,7 +233,7 @@ def chat():
                 "error": (
                     "Analise ao vivo precisa das API keys no Render Environment: "
                     + ", ".join(missing)
-                    + ". Enquanto isso, digite **demo** para o exemplo Chatguru."
+                    + "."
                 ),
                 "missing_keys": missing,
                 "demo_only": False,
@@ -278,18 +263,16 @@ def chat():
 
 
 def _ack_message(parsed: ParsedInput) -> str:
-    comps = ""
+    name = parsed.company or parsed.slug or "seu site"
     if parsed.competitors:
-        comps = " Concorrentes sugeridos: " + ", ".join(parsed.competitors) + "."
-    else:
-        comps = " Sem concorrentes informados. Vou pesquisar automaticamente."
-    if DEMO_ONLY or parsed.demo:
-        mode = " (demo publica, resultados em etapas, cerca de 40s)"
-    else:
-        mode = " (pipeline completa, tempo estimado cerca de 10 min. Resultados aparecem etapa a etapa)"
+        return (
+            f"Perfeito. Vou analisar seu site **{name}** e os concorrentes "
+            f"informados ({', '.join(parsed.competitors)}). "
+            "(tempo estimado cerca de 5 min.)."
+        )
     return (
-        f"Perfeito. Vou analisar **{parsed.company or parsed.slug}**{mode}.{comps} "
-        "Vou liberar Briefing, Concorrentes, Google Ads, SEO e Marca conforme cada etapa terminar."
+        f"Perfeito. Vou analisar seu site **{name}** e encontrar seus concorrentes. "
+        "(tempo estimado cerca de 5 min.)."
     )
 
 
@@ -392,8 +375,8 @@ h1{{font-size:18px;margin:0 0 8px}}p{{color:#555;font-size:14px;line-height:1.5}
 a{{display:inline-block;margin-top:14px;padding:10px 16px;border-radius:10px;background:#4f46e5;color:#fff;text-decoration:none;font-weight:700}}</style>
 </head><body><div class="card">
 <h1>{"Pagamento aprovado" if status=="success" else ("Pagamento pendente" if status=="pending" else "Pagamento nao concluido")}</h1>
-<p>{"Pode voltar ao Radar Agent e informar e-mail ou WhatsApp para receber a analise." if status=="success" else "Se pagou via PIX, aguarde a confirmacao e volte ao chat."}</p>
-<a href="/?paid={status}&order_id={order_id}">Voltar ao Radar Agent</a>
+<p>{"Pagamento recebido. Volte ao chat para informar o contato e receber a analise." if status=="success" else "Se pagou via PIX, aguarde a confirmacao e volte ao chat."}</p>
+<a href="/?paid={status}&order_id={order_id}">Voltar ao Radar da Concorrência</a>
 </div>
 <script>
 try {{
@@ -581,5 +564,5 @@ def _sse(payload: dict) -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8766"))
-    print(f"Radar Agent Chatbot -> http://127.0.0.1:{port}  DEMO_ONLY={DEMO_ONLY} live_keys={_live_keys_ready()}")
+    print(f"Radar da Concorrencia -> http://127.0.0.1:{port}  DEMO_ONLY={DEMO_ONLY} live_keys={_live_keys_ready()}")
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

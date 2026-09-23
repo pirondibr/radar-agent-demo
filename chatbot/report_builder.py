@@ -858,12 +858,12 @@ def build_report_from_xlsx(
         if client_row and rival:
             body = (
                 f"**{client_label}** tem {client_row['value_fmt']} {unit}. "
-                f"No recorte Alto: **{rival['name']}** com {rival['value_fmt']}."
+                f"**{rival['name']}** lidera com {rival['value_fmt']}."
             )
         elif client_row:
             body = f"**{client_label}** aparece com {client_row['value_fmt']} {unit} neste canal."
         else:
-            body = f"Ranking de {label} entre cliente e concorrentes Alto."
+            body = f"Ranking de {label} entre você e os concorrentes."
         if include_with_url and any(r.get("url") and (r.get("value") or 0) == 0 for r in table if not r.get("is_client")):
             body += " Perfis encontrados; contagem de seguidores pode ficar n/d quando o scrape bloqueia."
         return {
