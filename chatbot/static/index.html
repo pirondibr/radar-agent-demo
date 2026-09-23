@@ -137,15 +137,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .pay-choice{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .pay-choice button{border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:var(--text)}
 .pay-choice button:hover{border-color:var(--accent);background:var(--surface-2)}
-.pay-form{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-.pay-form input{flex:1;min-width:180px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px}
-.pay-form button{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+.pay-form{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.pay-form > input{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px;box-sizing:border-box}
+.pay-form > button[data-contact-send]{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;align-self:flex-start}
 @media(max-width:640px){.main{padding:16px 12px 130px}.dtable{font-size:11px}.hero-val{font-size:28px}.top-meta,.top-sep,.top-status{display:none}.top-version{font-size:9px;padding:2px 6px}.comp-row{flex-wrap:wrap}.pro-cta{flex-direction:column;align-items:stretch}.pro-cta-btn{width:100%;text-align:center}}
 </style>
 </head>
 <body>
 <div class="top">
- <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar Agent</div><span class="top-version" id="appVersion">v1.2.0</span></div>
+ <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar Agent</div><span class="top-version" id="appVersion">v1.2.1</span></div>
  <div class="top-sep"></div>
  <div class="top-status" id="topStatus">Pronto</div>
  <div class="top-right"><div class="top-meta" id="topMeta">MVP Ads + SEO + Marca</div></div>
@@ -162,7 +162,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.2.1';
+const APP_VERSION = '1.3.0';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -341,34 +341,128 @@ function startPaidCapture(channel) {
   meta: 'Meta Ads', linkedin: 'LinkedIn', instagram: 'Instagram', youtube: 'YouTube',
  })[channel] || channel;
 
- addBotBubble(`Pagamento simulado com sucesso (MVP). Vamos liberar a **análise Pro de ${channelLabel}**.`);
+ addBotBubble(`Vamos desbloquear a **análise Pro de ${channelLabel}** (R$ 99). Aceitamos **PIX** e **cartão** via Mercado Pago.`);
 
  const node = append(`
   <div class="q-block reveal">
    <div class="bot-label"><span class="dot"></span>Radar Agent</div>
    <div class="q-bubble">
-    Sua análise está sendo feita. No máximo em <strong>24 horas</strong> você vai receber ela no seu e-mail ou WhatsApp.
-    Qual você prefere informar?
+    Clique em <strong>Pagar com Mercado Pago</strong> para abrir PIX ou cartão.
+    Depois que o pagamento for aprovado, peço seu e-mail ou WhatsApp para enviar a análise em até 24h.
    </div>
    <div class="pay-choice">
-    <button type="button" data-contact-type="email">E-mail</button>
-    <button type="button" data-contact-type="whatsapp">WhatsApp</button>
+    <button type="button" data-pay-start>Pagar com Mercado Pago</button>
+    <button type="button" data-pay-check hidden>Já paguei — verificar</button>
    </div>
+   <div class="hint" data-pay-hint></div>
    <div class="pay-form" hidden>
+    <div class="pay-choice" style="margin-bottom:8px">
+     <button type="button" data-contact-type="email">E-mail</button>
+     <button type="button" data-contact-type="whatsapp">WhatsApp</button>
+    </div>
     <input type="text" data-contact-input placeholder="" />
     <button type="button" data-contact-send>Enviar</button>
    </div>
   </div>`);
 
+ let orderId = '';
  let chosenType = '';
+ let pollTimer = null;
  const form = node.querySelector('.pay-form');
  const inp = node.querySelector('[data-contact-input]');
  const send = node.querySelector('[data-contact-send]');
+ const hint = node.querySelector('[data-pay-hint]');
+ const btnStart = node.querySelector('[data-pay-start]');
+ const btnCheck = node.querySelector('[data-pay-check]');
+
+ function showContactCapture() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  addBotBubble(`Pagamento confirmado. Sua análise Pro de **${channelLabel}** está na fila. Qual contato você prefere: e-mail ou WhatsApp?`);
+  form.hidden = false;
+  btnStart.hidden = true;
+  btnCheck.hidden = true;
+  hint.textContent = '';
+ }
+
+ async function checkPaid() {
+  if (!orderId) return false;
+  try {
+   const res = await fetch('/api/checkout/' + encodeURIComponent(orderId));
+   const data = await res.json();
+   if (data.paid) {
+    showContactCapture();
+    return true;
+   }
+   hint.textContent = data.mp_status
+    ? ('Status Mercado Pago: ' + data.mp_status)
+    : 'Aguardando confirmação do pagamento...';
+  } catch (e) {
+   hint.textContent = 'Não consegui verificar agora. Tente de novo em instantes.';
+  }
+  return false;
+ }
+
+ btnStart.addEventListener('click', async () => {
+  btnStart.disabled = true;
+  hint.textContent = 'Gerando checkout...';
+  try {
+   const res = await fetch('/api/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+     channel,
+     company: analysisCtx.company || '',
+     slug: analysisCtx.slug || '',
+     job_id: analysisCtx.job_id || '',
+    }),
+   });
+   const data = await res.json();
+   if (!res.ok) {
+    hint.textContent = data.error || 'Falha ao criar pagamento';
+    btnStart.disabled = false;
+    return;
+   }
+   orderId = data.order_id;
+   const url = data.init_point || data.sandbox_init_point;
+   if (!url) {
+    hint.textContent = 'Checkout sem URL de pagamento.';
+    btnStart.disabled = false;
+    return;
+   }
+   window.open(url, '_blank', 'noopener,noreferrer');
+   btnCheck.hidden = false;
+   hint.textContent = 'Janela do Mercado Pago aberta. Conclua PIX ou cartão e volte aqui.';
+   pollTimer = setInterval(() => { checkPaid(); }, 4000);
+  } catch (e) {
+   hint.textContent = e.message;
+   btnStart.disabled = false;
+  }
+ });
+
+ btnCheck.addEventListener('click', () => checkPaid());
+
+ window.addEventListener('message', (ev) => {
+  const d = ev && ev.data;
+  if (!d || d.type !== 'mp_return') return;
+  if (d.order_id) orderId = d.order_id;
+  checkPaid();
+ });
+
+ // Se voltou na mesma aba com ?paid=&order_id=
+ try {
+  const u = new URL(window.location.href);
+  if (u.searchParams.get('order_id') && u.searchParams.get('paid') === 'success') {
+   orderId = u.searchParams.get('order_id');
+   checkPaid();
+   u.searchParams.delete('paid');
+   u.searchParams.delete('order_id');
+   window.history.replaceState({}, '', u.pathname);
+  }
+ } catch (e) {}
 
  node.querySelectorAll('[data-contact-type]').forEach((btn) => {
   btn.addEventListener('click', () => {
    chosenType = btn.getAttribute('data-contact-type');
-   form.hidden = false;
    inp.placeholder = chosenType === 'email' ? 'seu@email.com' : '11999999999';
    inp.focus();
   });
@@ -398,6 +492,7 @@ function startPaidCapture(channel) {
      company: analysisCtx.company || '',
      slug: analysisCtx.slug || '',
      job_id: analysisCtx.job_id || '',
+     order_id: orderId || '',
     }),
    });
    const data = await res.json();
@@ -411,7 +506,6 @@ function startPaidCapture(channel) {
     + 'Em até 24h você recebe o relatório.'
    );
    form.hidden = true;
-   node.querySelector('.pay-choice').hidden = true;
   } catch (e) {
    addBotBubble('Falha ao salvar o lead: ' + e.message);
    send.disabled = false;

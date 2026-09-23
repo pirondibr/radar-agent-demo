@@ -12,17 +12,26 @@ O app roda no **Render** (não Vercel): Flask + SSE + pipeline de ~10 min.
 | Key | Obrigatório |
 |-----|-------------|
 | `DEMO_ONLY` | `0` |
-| `OPENROUTER_API_KEY` | sim |
-| `SCRAPINGBEE_API_KEY` | sim |
-| `DATAFORSEO_USER` | sim |
-| `DATAFORSEO_PASS` | sim |
-| `SEMRUSH_API_KEY` | sim |
+| `OPENROUTER_API_KEY` | sim (live) |
+| `SCRAPINGBEE_API_KEY` | sim (live / extras) |
+| `DATAFORSEO_USER` | sim (live) |
+| `DATAFORSEO_PASS` | sim (live) |
+| `SEMRUSH_API_KEY` | sim (live) |
+| `MERCADOPAGO_ACCESS_TOKEN` | sim (pago Pro) |
+| `MERCADOPAGO_PUBLIC_KEY` | recomendado |
+| `PUBLIC_BASE_URL` | `https://seu-app.onrender.com` |
 
-3. Salve → aguarde o redeploy
-4. Abra a URL e teste com uma URL real (ex: `https://www.mendesortega.com.br/`)
-5. Digite `demo` se quiser só o exemplo Chatguru (sem scrape)
+3. Save → aguarde o redeploy
+4. Confira `/api/hello`: `live_ready` e `payments_ready`
 
-Confira `/api/hello`: `live_ready: true` e `version: 1.1.0`.
+### Pagamento Pro (Mercado Pago)
+
+Checkout Pro com **PIX + cartão**. CTA "Desbloquear R$ 99" abre o checkout; após `approved`, captura e-mail/WhatsApp.
+
+Webhook: `POST /api/webhooks/mercadopago`  
+Return: `/pay/return`
+
+MCP Cursor (credenciais/docs): em Settings → Tools & MCPs, conecte `mercadopago-mcp-server` (`https://mcp.mercadopago.com/mcp`) e autorize o país BR.
 
 ## Rodar local
 

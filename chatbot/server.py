@@ -23,6 +23,16 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 from parse_input import ParsedInput, parse_user_message
 from pipeline import EXTRA_STEP_DEFS, STEP_DEFS, run_extras_pipeline, run_pipeline
+from mercadopago_client import (
+    PRO_PRICE,
+    apply_payment_to_order,
+    create_pro_checkout,
+    fetch_payment,
+    load_order,
+    mark_order_contact,
+    mp_configured,
+    mp_public_key,
+)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
@@ -48,7 +58,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.2.1"
+APP_VERSION = "1.3.0"
 
 REQUIRED_LIVE_KEYS = (
     "OPENROUTER_API_KEY",
@@ -187,6 +197,8 @@ def hello():
         "demo_only": DEMO_ONLY,
         "live_ready": live_ok,
         "keys_ready": keys,
+        "payments_ready": mp_configured(),
+        "pro_price": PRO_PRICE,
         "version": APP_VERSION,
     })
 
@@ -279,17 +291,150 @@ def _ack_message(parsed: ParsedInput) -> str:
     )
 
 
+@app.post("/api/checkout")
+def checkout():
+    """Cria Checkout Pro (PIX + cartao) para Radar Pro R$99."""
+    data = request.get_json(silent=True) or {}
+    channel = (data.get("channel") or "").strip() or "canal"
+    if not mp_configured():
+        return jsonify({
+            "error": (
+                "Mercado Pago ainda nao esta configurado. "
+                "Defina MERCADOPAGO_ACCESS_TOKEN (e PUBLIC_BASE_URL) no ambiente."
+            ),
+            "payments_ready": False,
+        }), 503
+    try:
+        result = create_pro_checkout(
+            channel=channel,
+            company=(data.get("company") or "").strip(),
+            slug=(data.get("slug") or "").strip(),
+            job_id=(data.get("job_id") or "").strip(),
+        )
+        return jsonify({"ok": True, **result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+
+@app.get("/api/checkout/<order_id>")
+def checkout_status(order_id: str):
+    order = load_order(order_id)
+    if not order:
+        return jsonify({"error": "Pedido nao encontrado"}), 404
+    return jsonify({
+        "order_id": order["id"],
+        "status": order.get("status"),
+        "mp_status": order.get("mp_status"),
+        "channel": order.get("channel"),
+        "amount": order.get("amount"),
+        "paid": order.get("status") == "paid",
+        "preference_id": order.get("preference_id"),
+        "init_point": order.get("init_point"),
+    })
+
+
+@app.post("/api/webhooks/mercadopago")
+@app.get("/api/webhooks/mercadopago")
+def mercadopago_webhook():
+    """Notificacoes Mercado Pago (payment)."""
+    payload = request.get_json(silent=True) or {}
+    topic = (
+        request.args.get("topic")
+        or request.args.get("type")
+        or payload.get("type")
+        or payload.get("topic")
+        or ""
+    ).lower()
+    payment_id = (
+        request.args.get("data.id")
+        or request.args.get("id")
+        or str((payload.get("data") or {}).get("id") or "")
+        or str(payload.get("id") or "")
+    )
+    print(f"[MP-WEBHOOK] topic={topic} payment_id={payment_id} args={dict(request.args)}")
+    if "payment" in topic and payment_id and payment_id not in ("", "null"):
+        try:
+            payment = fetch_payment(str(payment_id))
+            order = apply_payment_to_order(payment)
+            print(f"[MP-WEBHOOK] order={order and order.get('id')} status={order and order.get('status')}")
+        except Exception as e:
+            print(f"[MP-WEBHOOK] erro: {e}")
+            return jsonify({"ok": False, "error": str(e)}), 200
+    return jsonify({"ok": True})
+
+
+@app.get("/pay/return")
+def pay_return():
+    """Volta do Checkout Pro para o chat com order_id na query."""
+    status = (request.args.get("status") or "").strip()
+    order_id = (request.args.get("order_id") or "").strip()
+    # Se MP mandar collection_id / payment_id, tenta sincronizar
+    payment_id = (
+        request.args.get("payment_id")
+        or request.args.get("collection_id")
+        or ""
+    ).strip()
+    if payment_id and payment_id not in ("null", "None") and mp_configured():
+        try:
+            apply_payment_to_order(fetch_payment(payment_id))
+        except Exception as e:
+            print(f"[MP-RETURN] sync erro: {e}")
+    # Pagina minima que fecha o popup / redireciona ao app
+    html = f"""<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Pagamento Radar Pro</title>
+<style>body{{font-family:system-ui,sans-serif;background:#fafafa;color:#111;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}}
+.card{{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:28px 24px;max-width:420px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.06)}}
+h1{{font-size:18px;margin:0 0 8px}}p{{color:#555;font-size:14px;line-height:1.5}}
+a{{display:inline-block;margin-top:14px;padding:10px 16px;border-radius:10px;background:#4f46e5;color:#fff;text-decoration:none;font-weight:700}}</style>
+</head><body><div class="card">
+<h1>{"Pagamento aprovado" if status=="success" else ("Pagamento pendente" if status=="pending" else "Pagamento nao concluido")}</h1>
+<p>{"Pode voltar ao Radar Agent e informar e-mail ou WhatsApp para receber a analise." if status=="success" else "Se pagou via PIX, aguarde a confirmacao e volte ao chat."}</p>
+<a href="/?paid={status}&order_id={order_id}">Voltar ao Radar Agent</a>
+</div>
+<script>
+try {{
+  if (window.opener) {{
+    window.opener.postMessage({{ type: 'mp_return', status: '{status}', order_id: '{order_id}' }}, '*');
+  }}
+}} catch (e) {{}}
+</script>
+</body></html>"""
+    return Response(html, mimetype="text/html")
+
+
 @app.post("/api/leads")
 def create_lead():
-    """MVP pago simulado: captura email/WhatsApp para analise profunda manual."""
+    """Apos pagamento: captura email/WhatsApp para analise profunda."""
     data = request.get_json(silent=True) or {}
     contact_type = (data.get("contact_type") or "").strip().lower()
     contact = (data.get("contact") or "").strip()
     channel = (data.get("channel") or "").strip()
+    order_id = (data.get("order_id") or "").strip()
     if contact_type not in ("email", "whatsapp"):
         return jsonify({"error": "Informe contact_type: email ou whatsapp"}), 400
     if not contact or len(contact) < 5:
         return jsonify({"error": "Informe um contato valido"}), 400
+
+    paid = False
+    if mp_configured():
+        if not order_id:
+            return jsonify({"error": "Pagamento obrigatorio. Conclua o checkout Mercado Pago primeiro."}), 402
+        order = load_order(order_id)
+        if not order:
+            return jsonify({"error": "Pedido nao encontrado"}), 404
+        if order.get("status") != "paid":
+            return jsonify({
+                "error": "Pagamento ainda nao confirmado. Conclua PIX/cartao e tente de novo.",
+                "order_status": order.get("status"),
+            }), 402
+        paid = True
+        mark_order_contact(order_id, contact_type, contact)
+    elif order_id:
+        order = load_order(order_id)
+        if order and order.get("status") == "paid":
+            paid = True
+            mark_order_contact(order_id, contact_type, contact)
 
     lead = {
         "id": uuid.uuid4().hex[:12],
@@ -301,16 +446,19 @@ def create_lead():
         "company": (data.get("company") or "").strip(),
         "slug": (data.get("slug") or "").strip(),
         "job_id": (data.get("job_id") or "").strip(),
-        "simulated_payment": True,
+        "order_id": order_id,
+        "simulated_payment": not paid,
         "status": "pending_manual",
+        "paid": paid,
     }
     LEADS_DIR.mkdir(parents=True, exist_ok=True)
     with LEADS_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(lead, ensure_ascii=False) + "\n")
-    print(f"[LEAD] {lead['id']} {lead['channel']} {lead['contact_type']}={lead['contact']} slug={lead['slug']}")
+    print(f"[LEAD] {lead['id']} paid={paid} {lead['channel']} {lead['contact_type']}={lead['contact']}")
     return jsonify({
         "ok": True,
         "lead_id": lead["id"],
+        "paid": paid,
         "message": (
             f"Perfeito. Sua analise Pro de **{channel or 'canal'}** esta na fila. "
             f"Em ate 24h enviamos no seu {contact_type}."
