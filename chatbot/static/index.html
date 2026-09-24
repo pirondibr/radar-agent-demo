@@ -138,6 +138,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .pay-choice button{border:1px solid var(--border);background:var(--surface);border-radius:10px;padding:10px 14px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;color:var(--text)}
 .pay-choice button:hover{border-color:var(--accent);background:var(--surface-2)}
 .pay-form{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.pay-form[hidden]{display:none !important}
 .pay-form > input{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px;box-sizing:border-box}
 .pay-form > button[data-contact-send]{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;align-self:flex-start}
 @media(max-width:640px){.main{padding:16px 12px 130px}.dtable{font-size:11px}.hero-val{font-size:28px}.top-meta,.top-sep,.top-status{display:none}.top-version{font-size:9px;padding:2px 6px}.comp-row{flex-wrap:wrap}.pro-cta{flex-direction:column;align-items:stretch}.pro-cta-btn{width:100%;text-align:center}}
@@ -162,7 +163,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.4';
+const APP_VERSION = '1.5.5';
 const BOT_NAME = 'Radar da Concorrência';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -177,6 +178,8 @@ let busy = false;
 let awaitingExtraJobId = null;
 let stepDefs = [];
 let analysisCtx = { company: '', slug: '', job_id: '', demo: false };
+/** Apos pagamento Pro: aguarda e-mail/WhatsApp no input principal do chat */
+let contactPending = null;
 
 function esc(s) {
  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -380,22 +383,10 @@ function startPaidCapture(channel) {
     <button type="button" data-pay-check hidden>Já paguei — verificar</button>
    </div>
    <div class="hint" data-pay-hint></div>
-   <div class="pay-form" hidden>
-    <div class="pay-choice" style="margin-bottom:8px">
-     <button type="button" data-contact-type="email">E-mail</button>
-     <button type="button" data-contact-type="whatsapp">WhatsApp</button>
-    </div>
-    <input type="text" data-contact-input placeholder="" />
-    <button type="button" data-contact-send>Enviar</button>
-   </div>
   </div>`);
 
  let orderId = '';
- let chosenType = '';
  let pollTimer = null;
- const form = node.querySelector('.pay-form');
- const inp = node.querySelector('[data-contact-input]');
- const send = node.querySelector('[data-contact-send]');
  const hint = node.querySelector('[data-pay-hint]');
  const btnStart = node.querySelector('[data-pay-start]');
  const btnCheck = node.querySelector('[data-pay-check]');
@@ -403,11 +394,22 @@ function startPaidCapture(channel) {
  function showContactCapture() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   try { sessionStorage.removeItem('radar_mp_pending'); } catch (e) {}
-  addBotBubble(`Obrigado pelo pagamento! Sua análise Pro de **${channelLabel}** vai ser preparada e enviada em até 24h. Qual contato você prefere: e-mail ou WhatsApp?`);
-  form.hidden = false;
+  contactPending = {
+   channel,
+   channelLabel,
+   orderId: orderId || '',
+   company: analysisCtx.company || '',
+   slug: analysisCtx.slug || '',
+   job_id: analysisCtx.job_id || '',
+  };
   btnStart.hidden = true;
   btnCheck.hidden = true;
   hint.textContent = '';
+  addBotBubble(
+   `Obrigado pelo pagamento! Sua análise Pro de **${channelLabel}** será preparada e enviada em até 24h. `
+   + 'Responda aqui no chat com seu **e-mail** ou **WhatsApp** (com DDD).'
+  );
+  try { input.focus(); } catch (e) {}
  }
 
  async function checkPaid() {
@@ -492,63 +494,49 @@ function startPaidCapture(channel) {
    window.history.replaceState({}, '', u.pathname);
   }
  } catch (e) {}
+}
 
- node.querySelectorAll('[data-contact-type]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-   chosenType = btn.getAttribute('data-contact-type');
-   inp.placeholder = chosenType === 'email' ? 'seu@email.com' : '11999999999';
-   inp.focus();
-  });
- });
-
- async function submitLead() {
-  const contact = (inp.value || '').trim();
-  if (!chosenType) {
-   addBotBubble('Escolha e-mail ou WhatsApp primeiro.');
-   return;
-  }
-  if (contact.length < 5) {
-   addBotBubble('Informe um contato válido para eu registrar sua análise Pro.');
-   return;
-  }
-  addUserBubble(contact);
-  send.disabled = true;
-  try {
-   const res = await fetch('/api/leads', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-     offer: 'deep_channel',
-     channel,
-     contact_type: chosenType,
-     contact,
-     company: analysisCtx.company || '',
-     slug: analysisCtx.slug || '',
-     job_id: analysisCtx.job_id || '',
-     order_id: orderId || '',
-    }),
-   });
-   const data = await res.json();
-   if (!res.ok) {
-    addBotBubble(data.error || 'Não consegui salvar o contato.');
-    send.disabled = false;
-    return;
-   }
-   addBotBubble(
-    `Perfeito. Registrei seu ${chosenType} (**${contact}**) para a análise Pro de **${channelLabel}**. `
-    + 'Em até 24h você recebe o relatório.'
-   );
-   form.hidden = true;
-  } catch (e) {
-   addBotBubble('Falha ao salvar o lead: ' + e.message);
-   send.disabled = false;
-  }
+async function submitPendingContact(rawContact) {
+ const pending = contactPending;
+ if (!pending) return false;
+ const contact = (rawContact || '').trim();
+ if (contact.length < 5) {
+  addBotBubble('Envie um e-mail (ex: seu@email.com) ou WhatsApp com DDD (ex: 11999999999).');
+  return true;
  }
-
- send.addEventListener('click', submitLead);
- inp.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') submitLead();
- });
+ setBusy(true);
+ try {
+  const res = await fetch('/api/leads', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({
+    offer: 'deep_channel',
+    channel: pending.channel || '',
+    contact,
+    company: pending.company || analysisCtx.company || '',
+    slug: pending.slug || analysisCtx.slug || '',
+    job_id: pending.job_id || analysisCtx.job_id || '',
+    order_id: pending.orderId || '',
+   }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+   addBotBubble(data.error || 'Não consegui salvar o contato.');
+   setBusy(false);
+   return true;
+  }
+  contactPending = null;
+  const label = data.contact_type === 'email' ? 'e-mail' : 'WhatsApp';
+  addBotBubble(
+   data.message
+   || (`Perfeito. Registrei seu ${label} (**${contact}**) para a análise Pro de **${pending.channelLabel || pending.channel}**. Em até 24h você recebe o relatório.`)
+  );
+ } catch (e) {
+  addBotBubble('Falha ao salvar o contato: ' + e.message);
+ } finally {
+  setBusy(false);
+ }
+ return true;
 }
 
 function renderProTeaser(opts) {
@@ -1033,7 +1021,7 @@ async function boot() {
  const askNode = addBotBubble(data.ask, true);
  const hint = document.createElement('div');
  hint.className = 'hint';
- hint.innerHTML = 'Exemplo: <code>www.mendesortega.com.br/</code>';
+ hint.innerHTML = 'Exemplo: <code>seusite.com.br</code>';
  askNode.appendChild(hint);
  }, 450);
  } catch (e) {
@@ -1274,6 +1262,13 @@ async function sendMessage() {
  if (!text || busy) return;
  input.value = '';
  addUserBubble(text);
+
+ // Pos-pagamento Pro: contato no input do chat (nao iniciar nova analise)
+ if (contactPending) {
+  await submitPendingContact(text);
+  return;
+ }
+
  setBusy(true);
 
  let jobId;

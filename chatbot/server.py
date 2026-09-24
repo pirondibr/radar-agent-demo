@@ -66,7 +66,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.4"
+APP_VERSION = "1.5.5"
 
 try:
     usage_db.init_db()
@@ -238,16 +238,16 @@ def hello():
     )
     ask = "Para iniciarmos, envie o endereço do seu site logo abaixo."
     if DEMO_ONLY:
-        examples = ["www.mendesortega.com.br/"]
+        examples = ["seusite.com.br"]
     elif live_ok:
-        examples = ["www.mendesortega.com.br/"]
+        examples = ["seusite.com.br"]
     else:
         missing = ", ".join(_missing_live_keys())
         ask = (
             "Para iniciarmos, envie o endereço do seu site logo abaixo. "
             f"(Servidor ainda sem todas as API keys: {missing}.)"
         )
-        examples = ["www.mendesortega.com.br/"]
+        examples = ["seusite.com.br"]
     return jsonify({
         "greeting": greeting,
         "ask": ask,
@@ -527,10 +527,22 @@ def create_lead():
     contact = (data.get("contact") or "").strip()
     channel = (data.get("channel") or "").strip()
     order_id = (data.get("order_id") or "").strip()
-    if contact_type not in ("email", "whatsapp"):
-        return jsonify({"error": "Informe contact_type: email ou whatsapp"}), 400
+
     if not contact or len(contact) < 5:
-        return jsonify({"error": "Informe um contato valido"}), 400
+        return jsonify({"error": "Informe um contato valido (e-mail ou WhatsApp)"}), 400
+
+    # Detecta tipo se o usuario so digitou o contato no chat
+    if contact_type not in ("email", "whatsapp"):
+        if "@" in contact:
+            contact_type = "email"
+        else:
+            digits = "".join(ch for ch in contact if ch.isdigit())
+            if len(digits) >= 10:
+                contact_type = "whatsapp"
+            else:
+                return jsonify({
+                    "error": "Envie um e-mail (ex: seu@email.com) ou WhatsApp com DDD (ex: 11999999999).",
+                }), 400
 
     paid = False
     if mp_configured():
@@ -570,14 +582,20 @@ def create_lead():
     LEADS_DIR.mkdir(parents=True, exist_ok=True)
     with LEADS_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(lead, ensure_ascii=False) + "\n")
+    try:
+        usage_db.save_lead(lead)
+    except Exception as e:
+        print(f"[LEAD] sqlite save failed: {e}")
     print(f"[LEAD] {lead['id']} paid={paid} {lead['channel']} {lead['contact_type']}={lead['contact']}")
+    label = "e-mail" if contact_type == "email" else "WhatsApp"
     return jsonify({
         "ok": True,
         "lead_id": lead["id"],
         "paid": paid,
+        "contact_type": contact_type,
         "message": (
-            f"Perfeito. Sua analise Pro de **{channel or 'canal'}** esta na fila. "
-            f"Em ate 24h enviamos no seu {contact_type}."
+            f"Perfeito. Registrei seu {label} (**{contact}**) para a análise Pro de "
+            f"**{channel or 'canal'}**. Em até 24h você recebe o relatório."
         ),
     })
 

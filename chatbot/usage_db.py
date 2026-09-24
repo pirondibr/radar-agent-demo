@@ -101,10 +101,27 @@ def init_db() -> None:
                   message TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS leads (
+                  id TEXT PRIMARY KEY,
+                  ts REAL NOT NULL,
+                  offer TEXT,
+                  channel TEXT,
+                  contact_type TEXT,
+                  contact TEXT,
+                  company TEXT,
+                  slug TEXT,
+                  job_id TEXT,
+                  order_id TEXT,
+                  paid INTEGER DEFAULT 0,
+                  status TEXT DEFAULT 'pending_manual',
+                  meta_json TEXT
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_steps_run ON step_logs(run_id);
                 CREATE INDEX IF NOT EXISTS idx_artifacts_run ON artifacts(run_id);
                 CREATE INDEX IF NOT EXISTS idx_events_run ON event_logs(run_id, ts);
+                CREATE INDEX IF NOT EXISTS idx_leads_ts ON leads(ts DESC);
                 """
             )
             conn.commit()
@@ -491,3 +508,95 @@ def summarize_report(report: Optional[dict[str, Any]]) -> dict[str, Any]:
         "competitors_note": report.get("competitors_note") or "",
         "display_tier": report.get("display_tier") or "",
     }
+
+
+def save_lead(lead: dict[str, Any]) -> None:
+    """Persiste lead Pro (contato pos-pagamento) no SQLite."""
+    init_db()
+    with _lock:
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS leads (
+                  id TEXT PRIMARY KEY,
+                  ts REAL NOT NULL,
+                  offer TEXT,
+                  channel TEXT,
+                  contact_type TEXT,
+                  contact TEXT,
+                  company TEXT,
+                  slug TEXT,
+                  job_id TEXT,
+                  order_id TEXT,
+                  paid INTEGER DEFAULT 0,
+                  status TEXT DEFAULT 'pending_manual',
+                  meta_json TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO leads (
+                  id, ts, offer, channel, contact_type, contact,
+                  company, slug, job_id, order_id, paid, status, meta_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    lead.get("id") or "",
+                    float(lead.get("ts") or time.time()),
+                    lead.get("offer") or "",
+                    lead.get("channel") or "",
+                    lead.get("contact_type") or "",
+                    lead.get("contact") or "",
+                    lead.get("company") or "",
+                    lead.get("slug") or "",
+                    lead.get("job_id") or "",
+                    lead.get("order_id") or "",
+                    1 if lead.get("paid") else 0,
+                    lead.get("status") or "pending_manual",
+                    json.dumps(
+                        {k: v for k, v in lead.items() if k not in {
+                            "id", "ts", "offer", "channel", "contact_type", "contact",
+                            "company", "slug", "job_id", "order_id", "paid", "status",
+                        }},
+                        ensure_ascii=False,
+                    ),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+def list_leads(limit: int = 100) -> list[dict[str, Any]]:
+    init_db()
+    with _lock:
+        conn = _connect()
+        try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS leads (
+                  id TEXT PRIMARY KEY,
+                  ts REAL NOT NULL,
+                  offer TEXT,
+                  channel TEXT,
+                  contact_type TEXT,
+                  contact TEXT,
+                  company TEXT,
+                  slug TEXT,
+                  job_id TEXT,
+                  order_id TEXT,
+                  paid INTEGER DEFAULT 0,
+                  status TEXT DEFAULT 'pending_manual',
+                  meta_json TEXT
+                )
+                """
+            )
+            rows = conn.execute(
+                "SELECT * FROM leads ORDER BY ts DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
