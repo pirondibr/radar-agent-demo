@@ -42,13 +42,28 @@ def mp_public_key() -> str:
 
 
 def mp_sandbox_mode() -> bool:
+    """True when we should treat credentials as test.
+
+    Note: modern MP test credentials use APP_USR-... (not only TEST-...).
+    For APP_USR test tokens, Checkout Pro must open init_point (not
+    sandbox_init_point) — sandbox_init_point often yields "Ops, ocorreu um erro".
+    """
     flag = os.environ.get("MERCADOPAGO_SANDBOX", "").strip().lower()
     if flag in ("1", "true", "yes"):
         return True
     if flag in ("0", "false", "no"):
         return False
     token = mp_access_token().upper()
-    return token.startswith("TEST-")
+    return token.startswith("TEST-") or token.startswith("APP_USR-")
+
+
+def mp_use_sandbox_init_point() -> bool:
+    """Only classic TEST- tokens should open sandbox_init_point."""
+    token = mp_access_token().upper()
+    if token.startswith("TEST-"):
+        return True
+    # APP_USR test credentials (painel "Credenciais de teste") → init_point
+    return False
 
 
 def mp_configured() -> bool:
@@ -175,10 +190,10 @@ def create_pro_checkout(
         raise RuntimeError(f"Mercado Pago preference error {resp.status_code}: {resp.text[:500]}")
 
     pref = resp.json()
-    token_is_test = mp_sandbox_mode()
+    use_sandbox_url = mp_use_sandbox_init_point()
     init_point = (
         (pref.get("sandbox_init_point") or pref.get("init_point"))
-        if token_is_test
+        if use_sandbox_url
         else (pref.get("init_point") or pref.get("sandbox_init_point"))
     )
     order = {
@@ -199,7 +214,8 @@ def create_pro_checkout(
         "paid_at": None,
         "contact_type": "",
         "contact": "",
-        "sandbox": token_is_test,
+        "sandbox": mp_sandbox_mode(),
+        "use_sandbox_url": use_sandbox_url,
         "product": product,
     }
     save_order(order)
