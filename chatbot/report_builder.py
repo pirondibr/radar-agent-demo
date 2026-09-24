@@ -1185,11 +1185,17 @@ def build_report_from_xlsx(
             table[0]["name"] if table else "—"
         )
         client_row = next((r for r in table if r.get("is_client")), None)
-        rival = next((r for r in table if not r.get("is_client")), None)
-        if client_row and rival:
+        leader_row = next((r for r in table if (r.get("value") or 0) > 0), None)
+        second = next((r for r in table if not r.get("is_client") and (r.get("value") or 0) > 0), None)
+        if client_row and leader_row and leader_row.get("is_client") and second:
+            body = (
+                f"**{client_label}** lidera com {client_row['value_fmt']} {unit}. "
+                f"**{second['name']}** aparece com {second['value_fmt']}."
+            )
+        elif client_row and leader_row and not leader_row.get("is_client"):
             body = (
                 f"**{client_label}** tem {client_row['value_fmt']} {unit}. "
-                f"**{rival['name']}** lidera com {rival['value_fmt']}."
+                f"**{leader_row['name']}** lidera com {leader_row['value_fmt']}."
             )
         elif client_row:
             body = f"**{client_label}** aparece com {client_row['value_fmt']} {unit} neste canal."
