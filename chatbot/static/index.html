@@ -172,7 +172,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.8';
+const APP_VERSION = '1.5.9';
 const BOT_NAME = 'Radar da Concorrência';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -426,7 +426,7 @@ function startPaidCapture(channel) {
   leadId: '',
  };
  addBotBubble(
-  `Para liberar a **análise Pro de ${channelLabel}** (R$ 99), me envie seu **nome** e **e-mail ou WhatsApp**. `
+  `Para liberar a **análise Pro de ${channelLabel}** (R$ ${window.__proPrice || 99}), me envie seu **nome** e **e-mail ou WhatsApp**. `
   + 'Exemplo: `Maria Silva, maria@email.com` ou `João, 11999999999`.',
   false
  );
@@ -657,6 +657,7 @@ function renderProTeaser(opts) {
  <span class="pill ${theme}">Pro</span>
  </button>`).join('');
 
+ const price = (window.__proPrice || 99);
  const node = append(`
  <div class="q-block reveal">
  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
@@ -667,13 +668,13 @@ function renderProTeaser(opts) {
  <div class="ac-agent ${agentCls}">P</div>
  <div class="ac-label ${labelCls}">${esc(label)}</div>
  </div>
- <div class="pro-price ${theme}"><span class="cur">R$</span><span class="val">99</span><span class="per">/análise</span></div>
+ <div class="pro-price ${theme}"><span class="cur">R$</span><span class="val">${esc(String(price))}</span><span class="per">/análise</span></div>
  </div>
  <div class="ac-text" style="margin-top:12px;margin-bottom:4px">${esc(blurb)}</div>
  <div class="pro-qs">${qs}</div>
  <div class="pro-cta ${theme}">
  <div class="pro-cta-text">${ctaText}</div>
- <button type="button" class="pro-cta-btn ${theme}" data-pro-cta>Desbloquear por R$ 99</button>
+ <button type="button" class="pro-cta-btn ${theme}" data-pro-cta>Desbloquear por R$ ${esc(String(price))}</button>
  </div>
  </div>
  </div>`);

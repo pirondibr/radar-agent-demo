@@ -31,8 +31,8 @@ services:
       - key: MERCADOPAGO_PUBLIC_KEY
         sync: false
       - key: MERCADOPAGO_SANDBOX
-        value: "1"
+        value: "0"
       - key: PUBLIC_BASE_URL
-        value: "https://radar-agent-demo.onrender.com"
+        value: "https://agente.radardaconcorrencia.com.br"
       - key: PRO_PRICE_BRL
-        value: "99"
+        value: "5"
