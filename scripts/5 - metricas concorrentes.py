@@ -437,9 +437,9 @@ def _meta_ads_count_via_scrapingbee(page_id: str) -> tuple[int | None, int]:
     )
     data = {"variables": variables, "doc_id": META_DOC_ID_ADS_COUNT}
     credits = 0
-    for attempt in range(3):
+    for attempt in range(2):
         try:
-            r = requests.post(SCRAPINGBEE_URL, params=params, data=data, timeout=90)
+            r = requests.post(SCRAPINGBEE_URL, params=params, data=data, timeout=45)
             credits += int(r.headers.get("Spb-cost", 1) or 1)
             if r.status_code == 401:
                 raise RuntimeError("ScrapingBee sem creditos (401) no Meta ads count")
@@ -471,28 +471,27 @@ def lookup_meta_ads(comp: dict) -> dict:
     brand = extract_website_name(comp.get("url") or comp.get("domain", ""))
     base_url = comp.get("url") or comp.get("domain", "")
     company_query = company_query_for_competitor(comp)
-    socials = social_links_from_homepage(base_url, social_search_label(base_url))
 
+    # Evita scrape de homepage (lento/bloqueado) — usa so nome/dominio
     search_terms: list[str] = []
-    ig_url = socials.get("instagram") or ""
-    if ig_url:
-        parsed = urlparse(ig_url)
-        parts = [p for p in parsed.path.split("/") if p]
-        if parts:
-            search_terms.append(parts[0].strip("@"))
     for term in (company_query, brand, extract_website_name(base_url), comp.get("domain", "")):
         t = str(term or "").strip()
         if t and t not in search_terms:
             search_terms.append(t)
+    search_terms = search_terms[:2]
 
     page_id = None
     credits = 0
     for term in search_terms:
-        pid, used = _meta_page_id_via_scrapingbee(term)
-        credits += used
-        if pid:
-            page_id = pid
-            break
+        try:
+            pid, used = _meta_page_id_via_scrapingbee(term)
+            credits += used
+            if pid:
+                page_id = pid
+                break
+        except Exception as e:
+            print(f"[META/SB] typeahead falhou ({term}): {e}", flush=True)
+            continue
 
     if not page_id:
         return {"meta_ads": None, "meta_url": "", "spb_credits": credits}
@@ -502,8 +501,12 @@ def lookup_meta_ads(comp: dict) -> dict:
         f"?active_status=active&ad_type=all&country=ALL&view_all_page_id={page_id}"
         "&search_type=page&media_type=all"
     )
-    count, used = _meta_ads_count_via_scrapingbee(page_id)
-    credits += used
+    try:
+        count, used = _meta_ads_count_via_scrapingbee(page_id)
+        credits += used
+    except Exception as e:
+        print(f"[META/SB] count falhou page_id={page_id}: {e}", flush=True)
+        count = None
     return {
         "meta_ads": count,
         "meta_url": page_url,
@@ -518,12 +521,17 @@ def load_meta_map(competitors: list[dict]) -> dict[str, dict]:
     total_credits = 0
     for i, comp in enumerate(competitors, 1):
         t0 = time.time()
-        print(f"[META/SB] ({i}/{n}) {comp.get('domain', '?')} ...", flush=True)
-        result = lookup_meta_ads(comp)
+        dom = comp.get("domain", "?")
+        print(f"[META/SB] ({i}/{n}) {dom} ...", flush=True)
+        try:
+            result = lookup_meta_ads(comp)
+        except Exception as e:
+            print(f"[META/SB] ({i}/{n}) {dom} ERRO: {e}", flush=True)
+            result = {"meta_ads": None, "meta_url": "", "spb_credits": 0}
         out[comp["domain"]] = result
         total_credits += int(result.get("spb_credits") or 0)
         print(
-            f"[META/SB] ({i}/{n}) {comp.get('domain', '?')} -> "
+            f"[META/SB] ({i}/{n}) {dom} -> "
             f"{result.get('meta_ads')} ads  page_id={result.get('page_id') or '—'}  "
             f"credits={result.get('spb_credits', 0)}  ({time.time() - t0:.1f}s)",
             flush=True,

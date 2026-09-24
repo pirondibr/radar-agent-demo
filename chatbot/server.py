@@ -66,7 +66,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.5"
+APP_VERSION = "1.5.6"
 
 try:
     usage_db.init_db()
@@ -81,7 +81,10 @@ REQUIRED_LIVE_KEYS = (
     "SEMRUSH_API_KEY",
 )
 
-LEADS_DIR = Path(__file__).resolve().parent / "data"
+LEADS_DIR = Path(
+    os.environ.get("RADAR_DATA_DIR", "").strip()
+    or str(Path(__file__).resolve().parent / "data")
+)
 LEADS_FILE = LEADS_DIR / "leads.jsonl"
 
 
@@ -521,17 +524,19 @@ button{{display:inline-block;margin-top:12px;padding:10px 16px;border-radius:10p
 
 @app.post("/api/leads")
 def create_lead():
-    """Apos pagamento: captura email/WhatsApp para analise profunda."""
+    """Captura nome + e-mail/WhatsApp (antes ou depois do pagamento)."""
     data = request.get_json(silent=True) or {}
     contact_type = (data.get("contact_type") or "").strip().lower()
     contact = (data.get("contact") or "").strip()
+    name = (data.get("name") or "").strip()
     channel = (data.get("channel") or "").strip()
     order_id = (data.get("order_id") or "").strip()
+    pre_payment = bool(data.get("pre_payment"))
+    lead_id = (data.get("lead_id") or "").strip() or uuid.uuid4().hex[:12]
 
     if not contact or len(contact) < 5:
         return jsonify({"error": "Informe um contato valido (e-mail ou WhatsApp)"}), 400
 
-    # Detecta tipo se o usuario so digitou o contato no chat
     if contact_type not in ("email", "whatsapp"):
         if "@" in contact:
             contact_type = "email"
@@ -545,7 +550,12 @@ def create_lead():
                 }), 400
 
     paid = False
-    if mp_configured():
+    status = "awaiting_payment" if pre_payment else "pending_manual"
+
+    if pre_payment:
+        paid = False
+        status = "awaiting_payment"
+    elif mp_configured():
         if not order_id:
             return jsonify({"error": "Pagamento obrigatorio. Conclua o checkout Mercado Pago primeiro."}), 402
         order = load_order(order_id)
@@ -557,27 +567,31 @@ def create_lead():
                 "order_status": order.get("status"),
             }), 402
         paid = True
+        status = "pending_manual"
         mark_order_contact(order_id, contact_type, contact)
     elif order_id:
         order = load_order(order_id)
         if order and order.get("status") == "paid":
             paid = True
+            status = "pending_manual"
             mark_order_contact(order_id, contact_type, contact)
 
     lead = {
-        "id": uuid.uuid4().hex[:12],
+        "id": lead_id,
         "ts": time.time(),
         "offer": data.get("offer") or "deep_channel",
         "channel": channel,
+        "name": name,
         "contact_type": contact_type,
         "contact": contact,
         "company": (data.get("company") or "").strip(),
         "slug": (data.get("slug") or "").strip(),
         "job_id": (data.get("job_id") or "").strip(),
         "order_id": order_id,
-        "simulated_payment": not paid,
-        "status": "pending_manual",
+        "simulated_payment": not paid and not pre_payment,
+        "status": status,
         "paid": paid,
+        "pre_payment": pre_payment,
     }
     LEADS_DIR.mkdir(parents=True, exist_ok=True)
     with LEADS_FILE.open("a", encoding="utf-8") as f:
@@ -586,17 +600,29 @@ def create_lead():
         usage_db.save_lead(lead)
     except Exception as e:
         print(f"[LEAD] sqlite save failed: {e}")
-    print(f"[LEAD] {lead['id']} paid={paid} {lead['channel']} {lead['contact_type']}={lead['contact']}")
+    print(
+        f"[LEAD] {lead['id']} paid={paid} pre={pre_payment} "
+        f"{lead['channel']} name={name!r} {lead['contact_type']}={lead['contact']}"
+    )
     label = "e-mail" if contact_type == "email" else "WhatsApp"
+    if pre_payment:
+        msg = (
+            f"Dados salvos ({name or 'lead'} / {label}). "
+            "Segue o link do Mercado Pago para concluir o pagamento."
+        )
+    else:
+        msg = (
+            f"Perfeito. Registrei seu {label} (**{contact}**) para a análise Pro de "
+            f"**{channel or 'canal'}**. Em até 24h você recebe o relatório."
+        )
     return jsonify({
         "ok": True,
         "lead_id": lead["id"],
         "paid": paid,
+        "name": name,
         "contact_type": contact_type,
-        "message": (
-            f"Perfeito. Registrei seu {label} (**{contact}**) para a análise Pro de "
-            f"**{channel or 'canal'}**. Em até 24h você recebe o relatório."
-        ),
+        "status": status,
+        "message": msg,
     })
 
 

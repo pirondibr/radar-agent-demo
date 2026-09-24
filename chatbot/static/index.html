@@ -116,6 +116,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .composer input::placeholder{color:var(--text-3)}
 .composer button{border:0;border-radius:12px;padding:12px 18px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
 .composer button:disabled{opacity:.45;cursor:not-allowed}
+.wa-fab{position:fixed;right:18px;bottom:88px;z-index:95;display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:999px;background:#25D366;color:#fff;font-weight:800;font-size:13px;text-decoration:none;font-family:inherit;box-shadow:0 8px 24px rgba(37,211,102,.35)}
+.wa-fab:hover{filter:brightness(1.05);color:#fff}
+.wa-fab svg{width:20px;height:20px;flex-shrink:0}
+@media(max-width:640px){.wa-fab{right:12px;bottom:78px;padding:11px 14px;font-size:12px}.wa-fab .wa-fab-label{display:none}}
 .reveal{opacity:0;transform:translateY(12px);transition:all .45s cubic-bezier(.16,1,.3,1)}.reveal.vis{opacity:1;transform:none}
 .hint{font-size:12px;color:#64748b;margin-top:6px;margin-left:0;line-height:1.6}.hint code{font-family:var(--mono);font-size:11px;background:#f1f5f9;color:#334155;padding:3px 7px;border-radius:5px;border:1px solid #e2e8f0}
 .err-card{background:var(--red-bg);border:1px solid rgba(220,38,38,.2);color:var(--red);padding:14px 16px;border-radius:10px;font-size:13px;margin-left:12px}
@@ -161,9 +165,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
  </div>
 </div>
 
+<a class="wa-fab" href="https://wa.me/5518995005665" target="_blank" rel="noopener noreferrer" title="Fale Conosco no WhatsApp">
+ <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.435 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+ <span class="wa-fab-label">Fale Conosco</span>
+</a>
+
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.5';
+const APP_VERSION = '1.5.6';
 const BOT_NAME = 'Radar da Concorrência';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -199,7 +208,8 @@ function append(html, scrollBlock) {
  const node = wrap.firstElementChild;
  thread.appendChild(node);
  reveal(node);
- const block = scrollBlock === undefined ? 'start' : scrollBlock;
+ // Default: nao rolar (SEO/Marca/extras sao rapidos). So 'start' quando pedido.
+ const block = scrollBlock === undefined ? 'none' : scrollBlock;
  if (block && block !== 'none') {
   node.scrollIntoView({ behavior: 'smooth', block: block });
  }
@@ -215,7 +225,7 @@ function replaceSection(sectionKey, html, scrollBlock) {
  if (!node) return existing;
  existing.replaceWith(node);
  reveal(node);
- const block = scrollBlock === undefined ? 'start' : scrollBlock;
+ const block = scrollBlock === undefined ? 'none' : scrollBlock;
  if (block && block !== 'none') {
   node.scrollIntoView({ behavior: 'smooth', block: block });
  }
@@ -232,7 +242,7 @@ function addBotBubble(text, intro) {
  return append(`<div class="q-block reveal">
  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
  <div class="${cls}">${mdLite(text)}</div>
- </div>`);
+ </div>`, intro ? 'start' : 'none');
 }
 function addUserBubble(text) {
  return append(`<div class="q-block reveal" style="display:flex;flex-direction:column"><div class="user-bubble">${esc(text)}</div></div>`);
@@ -370,47 +380,66 @@ function startPaidCapture(channel) {
   meta: 'Meta Ads', linkedin: 'LinkedIn', instagram: 'Instagram', youtube: 'YouTube',
  })[channel] || channel;
 
- addBotBubble(`Vamos desbloquear a **análise Pro de ${channelLabel}** (R$ 99). Aceitamos **PIX** e **cartão** via Mercado Pago.`);
+ // Destrava o composer mesmo se a pipeline ainda estiver "busy"
+ setBusy(false);
+ contactPending = {
+  phase: 'lead_prepay',
+  channel,
+  channelLabel,
+  company: analysisCtx.company || '',
+  slug: analysisCtx.slug || '',
+  job_id: analysisCtx.job_id || '',
+  orderId: '',
+  leadId: '',
+ };
+ addBotBubble(
+  `Para liberar a **análise Pro de ${channelLabel}** (R$ 99), me envie seu **nome** e **e-mail ou WhatsApp**. `
+  + 'Exemplo: `Maria Silva, maria@email.com` ou `João, 11999999999`.',
+  false
+ );
+ // forçar scroll neste pedido de dados
+ const last = thread.lastElementChild;
+ if (last) last.scrollIntoView({ behavior: 'smooth', block: 'start' });
+ try { input.focus(); } catch (e) {}
+}
 
+function parseLeadMessage(raw) {
+ const text = (raw || '').trim();
+ let name = '';
+ let contact = '';
+ // "Nome, contato" ou "Nome - contato" ou "Nome: contato"
+ const parts = text.split(/[,;\n]| - | – | — |:/).map(s => s.trim()).filter(Boolean);
+ if (parts.length >= 2) {
+  // Prefer contact as the part with @ or many digits
+  const withAt = parts.find(p => p.includes('@'));
+  const withPhone = parts.find(p => (p.replace(/\D/g, '').length >= 10));
+  contact = withAt || withPhone || parts[parts.length - 1];
+  name = parts.find(p => p !== contact) || parts[0];
+ } else {
+  contact = text;
+  if (text.includes('@')) name = text.split('@')[0].replace(/[._]/g, ' ');
+ }
+ name = (name || '').trim();
+ contact = (contact || '').trim();
+ return { name, contact };
+}
+
+async function openMercadoPagoCheckout(pending) {
  const node = append(`
-  <div class="q-block reveal">
+  <div class="q-block reveal" data-section="checkout">
    <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
-   <div class="q-bubble">
-    Clique em <strong>Pagar com Mercado Pago</strong> para abrir PIX ou cartão.
-   </div>
+   <div class="q-bubble">Abrindo o checkout do Mercado Pago (PIX ou cartão)…</div>
    <div class="pay-choice">
-    <button type="button" data-pay-start>Pagar com Mercado Pago</button>
+    <button type="button" data-pay-open>Abrir pagamento</button>
     <button type="button" data-pay-check hidden>Já paguei — verificar</button>
    </div>
    <div class="hint" data-pay-hint></div>
-  </div>`);
-
- let orderId = '';
- let pollTimer = null;
+  </div>`, 'start');
  const hint = node.querySelector('[data-pay-hint]');
- const btnStart = node.querySelector('[data-pay-start]');
+ const btnOpen = node.querySelector('[data-pay-open]');
  const btnCheck = node.querySelector('[data-pay-check]');
-
- function showContactCapture() {
-  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  try { sessionStorage.removeItem('radar_mp_pending'); } catch (e) {}
-  contactPending = {
-   channel,
-   channelLabel,
-   orderId: orderId || '',
-   company: analysisCtx.company || '',
-   slug: analysisCtx.slug || '',
-   job_id: analysisCtx.job_id || '',
-  };
-  btnStart.hidden = true;
-  btnCheck.hidden = true;
-  hint.textContent = '';
-  addBotBubble(
-   `Obrigado pelo pagamento! Sua análise Pro de **${channelLabel}** será preparada e enviada em até 24h. `
-   + 'Responda aqui no chat com seu **e-mail** ou **WhatsApp** (com DDD).'
-  );
-  try { input.focus(); } catch (e) {}
- }
+ let orderId = pending.orderId || '';
+ let pollTimer = null;
 
  async function checkPaid() {
   if (!orderId) return false;
@@ -418,7 +447,19 @@ function startPaidCapture(channel) {
    const res = await fetch('/api/checkout/' + encodeURIComponent(orderId));
    const data = await res.json();
    if (data.paid) {
-    showContactCapture();
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    try { sessionStorage.removeItem('radar_mp_pending'); } catch (e) {}
+    contactPending = null;
+    btnOpen.hidden = true;
+    btnCheck.hidden = true;
+    hint.textContent = '';
+    addBotBubble(
+     `Pagamento confirmado. Obrigado, **${pending.name || 'tudo certo'}**! `
+     + `Sua análise Pro de **${pending.channelLabel || pending.channel}** entra na fila — em até 24h enviamos no contato cadastrado.`,
+     false
+    );
+    const last = thread.lastElementChild;
+    if (last) last.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return true;
    }
    hint.textContent = data.mp_status
@@ -430,80 +471,88 @@ function startPaidCapture(channel) {
   return false;
  }
 
- btnStart.addEventListener('click', async () => {
-  btnStart.disabled = true;
+ async function createAndOpen() {
   hint.textContent = 'Gerando checkout...';
+  btnOpen.disabled = true;
   try {
    const res = await fetch('/api/checkout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-     channel,
+     channel: pending.channel,
      product: 'deep_channel',
-     company: analysisCtx.company || '',
-     slug: analysisCtx.slug || '',
-     job_id: analysisCtx.job_id || '',
+     company: pending.company || analysisCtx.company || '',
+     slug: pending.slug || analysisCtx.slug || '',
+     job_id: pending.job_id || analysisCtx.job_id || '',
+     lead_id: pending.leadId || '',
+     name: pending.name || '',
+     contact: pending.contact || '',
     }),
    });
    const data = await res.json();
    if (!res.ok) {
     hint.textContent = data.error || 'Falha ao criar pagamento';
-    btnStart.disabled = false;
+    btnOpen.disabled = false;
     return;
    }
    orderId = data.order_id;
+   pending.orderId = orderId;
+   contactPending = { ...pending, phase: 'await_pay', orderId };
    try {
     sessionStorage.setItem('radar_mp_pending', JSON.stringify({
-     order_id: orderId, channel: channel, at: Date.now()
+     order_id: orderId, channel: pending.channel, lead_id: pending.leadId, at: Date.now()
     }));
    } catch (e) {}
    const url = data.init_point || data.sandbox_init_point;
    if (!url) {
     hint.textContent = 'Checkout sem URL de pagamento.';
-    btnStart.disabled = false;
+    btnOpen.disabled = false;
     return;
    }
-   // Sem noopener: precisa de window.opener para a pagina /pay/return avisar o chat
    window.open(url, 'radar_mp_checkout');
    btnCheck.hidden = false;
+   btnOpen.disabled = false;
+   btnOpen.textContent = 'Reabrir pagamento';
    hint.textContent = 'Janela do Mercado Pago aberta. Conclua PIX ou cartão — esta aba do chat continua aqui.';
-   pollTimer = setInterval(() => { checkPaid(); }, 4000);
+   if (!pollTimer) pollTimer = setInterval(() => { checkPaid(); }, 4000);
   } catch (e) {
    hint.textContent = e.message;
-   btnStart.disabled = false;
+   btnOpen.disabled = false;
   }
- });
+ }
 
+ btnOpen.addEventListener('click', () => createAndOpen());
  btnCheck.addEventListener('click', () => checkPaid());
-
  window.addEventListener('message', (ev) => {
   const d = ev && ev.data;
   if (!d || d.type !== 'mp_return') return;
   if (d.order_id) orderId = d.order_id;
   checkPaid();
  });
-
- // Se voltou na mesma aba com ?paid=&order_id=
- try {
-  const u = new URL(window.location.href);
-  if (u.searchParams.get('order_id') && u.searchParams.get('paid') === 'success') {
-   orderId = u.searchParams.get('order_id');
-   checkPaid();
-   u.searchParams.delete('paid');
-   u.searchParams.delete('order_id');
-   window.history.replaceState({}, '', u.pathname);
-  }
- } catch (e) {}
+ createAndOpen();
 }
 
 async function submitPendingContact(rawContact) {
  const pending = contactPending;
  if (!pending) return false;
- const contact = (rawContact || '').trim();
- if (contact.length < 5) {
-  addBotBubble('Envie um e-mail (ex: seu@email.com) ou WhatsApp com DDD (ex: 11999999999).');
+
+ if (pending.phase === 'await_pay') {
+  addBotBubble('Conclua o pagamento no Mercado Pago (ou clique em **Já paguei — verificar**). Se precisar, use **Reabrir pagamento**.');
   return true;
  }
+
+ const { name, contact } = parseLeadMessage(rawContact);
+ if (!contact || contact.length < 5) {
+  addBotBubble('Envie **nome** e **e-mail ou WhatsApp**. Ex: `Maria Silva, maria@email.com`.');
+  return true;
+ }
+ const looksEmail = contact.includes('@');
+ const digits = contact.replace(/\D/g, '');
+ if (!looksEmail && digits.length < 10) {
+  addBotBubble('Não identifiquei e-mail nem WhatsApp com DDD. Tente de novo, por exemplo: `João, 11999999999`.');
+  return true;
+ }
+
  setBusy(true);
  try {
   const res = await fetch('/api/leads', {
@@ -512,28 +561,35 @@ async function submitPendingContact(rawContact) {
    body: JSON.stringify({
     offer: 'deep_channel',
     channel: pending.channel || '',
+    name,
     contact,
+    pre_payment: true,
     company: pending.company || analysisCtx.company || '',
     slug: pending.slug || analysisCtx.slug || '',
     job_id: pending.job_id || analysisCtx.job_id || '',
-    order_id: pending.orderId || '',
    }),
   });
   const data = await res.json();
   if (!res.ok) {
-   addBotBubble(data.error || 'Não consegui salvar o contato.');
+   addBotBubble(data.error || 'Não consegui salvar seus dados.');
    setBusy(false);
    return true;
   }
-  contactPending = null;
-  const label = data.contact_type === 'email' ? 'e-mail' : 'WhatsApp';
+  const next = {
+   ...pending,
+   phase: 'await_pay',
+   name: name || data.name || '',
+   contact,
+   leadId: data.lead_id || '',
+  };
+  contactPending = next;
   addBotBubble(
-   data.message
-   || (`Perfeito. Registrei seu ${label} (**${contact}**) para a análise Pro de **${pending.channelLabel || pending.channel}**. Em até 24h você recebe o relatório.`)
+   `Perfeito, **${name || 'registrado'}**! Salvei seu contato. Agora vou abrir o **Mercado Pago** para o pagamento da análise Pro.`
   );
+  setBusy(false);
+  await openMercadoPagoCheckout(next);
  } catch (e) {
   addBotBubble('Falha ao salvar o contato: ' + e.message);
- } finally {
   setBusy(false);
  }
  return true;
@@ -820,7 +876,7 @@ function renderBriefingCompetitors(payload) {
  ${note ? `<div class="hint" style="color:var(--amber);margin:8px 0">${esc(note)}</div>` : ''}
  <div class="comp-list">${compRows || '<div class="ac-text">Nenhum concorrente encontrado.</div>'}</div>
  </div>
- </div>`);
+ </div>`, 'start');
 }
 
 function renderAdsSection(gads, client) {
@@ -843,7 +899,7 @@ function renderAdsSection(gads, client) {
  </table></div>
  ${analysisBlocks('ads', gads.analysis_title, gads.insight, gads.pro_hook)}
  </div>
- </div>`);
+ </div>`, 'start');
  if (!existed) renderProTeaser({
  channel: 'ads',
  questions: PRO_QUESTIONS_ADS,
@@ -919,7 +975,7 @@ function renderBrandSection(brand, client) {
  if (!existed) renderProTeaser({
  channel: 'brand',
  questions: PRO_QUESTIONS_BRAND,
- bubble: 'Quer entender <strong>awareness e diferenciais</strong>? Na versão Pro aprofundamos liderança de marca.',
+ bubble: 'Quer entender as estratégias por trás das marcas de maior popularidade? Na versão Pro analisamos seus diferenciais.',
  label: 'Radar Pro Marca profundo',
  blurb: 'Exemplos de perguntas desbloqueadas na versao paga, por enquanto só visual:',
  ctaText: 'Desbloqueie por que o líder cresce mais, quais são os <strong>diferenciais</strong> e o que trava o crescimento da sua marca.',
@@ -1215,10 +1271,6 @@ function listenJobEvents(jobId, isExtras) {
   if (msg.type === 'partial') {
    gotPartial = true;
    handlePartial(msg);
-   if (msg.section === 'google_ads') {
-    const el = document.querySelector('[data-section="ads"]');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-   }
   }
   if (msg.type === 'complete') {
    if (msg.enrich) {
@@ -1259,11 +1311,12 @@ function listenJobEvents(jobId, isExtras) {
 
 async function sendMessage() {
  const text = input.value.trim();
- if (!text || busy) return;
+ if (!text) return;
+ // Contato pos-clique Pro deve funcionar mesmo com pipeline "busy"
+ if (busy && !contactPending) return;
  input.value = '';
  addUserBubble(text);
 
- // Pos-pagamento Pro: contato no input do chat (nao iniciar nova analise)
  if (contactPending) {
   await submitPendingContact(text);
   return;

@@ -106,6 +106,7 @@ def init_db() -> None:
                   ts REAL NOT NULL,
                   offer TEXT,
                   channel TEXT,
+                  name TEXT,
                   contact_type TEXT,
                   contact TEXT,
                   company TEXT,
@@ -523,6 +524,7 @@ def save_lead(lead: dict[str, Any]) -> None:
                   ts REAL NOT NULL,
                   offer TEXT,
                   channel TEXT,
+                  name TEXT,
                   contact_type TEXT,
                   contact TEXT,
                   company TEXT,
@@ -535,18 +537,23 @@ def save_lead(lead: dict[str, Any]) -> None:
                 )
                 """
             )
+            try:
+                conn.execute("ALTER TABLE leads ADD COLUMN name TEXT")
+            except Exception:
+                pass
             conn.execute(
                 """
                 INSERT OR REPLACE INTO leads (
-                  id, ts, offer, channel, contact_type, contact,
+                  id, ts, offer, channel, name, contact_type, contact,
                   company, slug, job_id, order_id, paid, status, meta_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     lead.get("id") or "",
                     float(lead.get("ts") or time.time()),
                     lead.get("offer") or "",
                     lead.get("channel") or "",
+                    lead.get("name") or "",
                     lead.get("contact_type") or "",
                     lead.get("contact") or "",
                     lead.get("company") or "",
@@ -557,7 +564,7 @@ def save_lead(lead: dict[str, Any]) -> None:
                     lead.get("status") or "pending_manual",
                     json.dumps(
                         {k: v for k, v in lead.items() if k not in {
-                            "id", "ts", "offer", "channel", "contact_type", "contact",
+                            "id", "ts", "offer", "channel", "name", "contact_type", "contact",
                             "company", "slug", "job_id", "order_id", "paid", "status",
                         }},
                         ensure_ascii=False,

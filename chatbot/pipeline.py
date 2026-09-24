@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -206,7 +207,12 @@ def find_concorrentes_xlsx(slug: str) -> Optional[Path]:
     return files[0] if files else None
 
 
-def _run_script(cmd: list[str], cwd: Path, on_log: Optional[Callable[[str], None]] = None) -> None:
+def _run_script(
+    cmd: list[str],
+    cwd: Path,
+    on_log: Optional[Callable[[str], None]] = None,
+    timeout_sec: Optional[int] = None,
+) -> None:
     proc = subprocess.Popen(
         cmd,
         cwd=str(cwd),
@@ -218,11 +224,30 @@ def _run_script(cmd: list[str], cwd: Path, on_log: Optional[Callable[[str], None
         bufsize=1,
     )
     assert proc.stdout is not None
-    for line in proc.stdout:
-        line = line.rstrip("\n\r")
-        if line and on_log:
-            on_log(line)
+    err_box: list[BaseException] = []
+
+    def _reader() -> None:
+        try:
+            for line in proc.stdout:
+                line = line.rstrip("\n\r")
+                if line and on_log:
+                    on_log(line)
+        except BaseException as e:  # noqa: BLE001
+            err_box.append(e)
+
+    reader = threading.Thread(target=_reader, daemon=True)
+    reader.start()
+    reader.join(timeout=timeout_sec)
+    if reader.is_alive():
+        proc.kill()
+        try:
+            proc.wait(timeout=10)
+        except Exception:
+            pass
+        raise TimeoutError(f"Comando excedeu {timeout_sec}s: {' '.join(cmd)}")
     proc.wait()
+    if err_box:
+        raise RuntimeError(f"Falha ao ler stdout: {err_box[0]}")
     if proc.returncode != 0:
         raise RuntimeError(f"Comando falhou (codigo {proc.returncode}): {' '.join(cmd)}")
 
@@ -845,7 +870,15 @@ def run_extras_pipeline(
         emit, set_step, "meta", "running", "Coletando Meta Ads Library...", mode,
         defs=defs, total=total,
     )
-    _run_script([sys.executable, str(SCRIPT_META), slug], FINAL_DIR, on_log)
+    try:
+        _run_script(
+            [sys.executable, str(SCRIPT_META), slug],
+            FINAL_DIR,
+            on_log,
+            timeout_sec=420,
+        )
+    except Exception as e:
+        emit("log", line=f"[META] Falha/timeout — seguindo com dados parciais: {e}")
     xlsx = find_metricas_xlsx(slug)
     if not xlsx:
         raise FileNotFoundError(f"XLSX de metricas nao encontrado para '{slug}' (rode a analise gratuita antes).")
