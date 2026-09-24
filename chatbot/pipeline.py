@@ -699,8 +699,15 @@ def run_enrich_competitors(
         if n not in preferred:
             preferred.append(n)
 
+    conc_xlsx = find_concorrentes_xlsx(slug)
+    if not conc_xlsx:
+        raise FileNotFoundError(
+            f"XLSX de concorrentes nao encontrado para '{slug}'. "
+            "Rode a analise gratuita antes de adicionar concorrentes."
+        )
+    emit("progress", step_id="enrich", state="running", detail=f"Incluindo {', '.join(names)} na lista...")
     added = append_user_competitors(
-        find_concorrentes_xlsx(slug),
+        conc_xlsx,
         names,
         client_name=client_name,
     )

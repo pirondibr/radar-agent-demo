@@ -66,7 +66,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.1"
+APP_VERSION = "1.5.3"
 
 try:
     usage_db.init_db()
@@ -238,16 +238,16 @@ def hello():
     )
     ask = "Para iniciarmos, envie o endereço do seu site logo abaixo."
     if DEMO_ONLY:
-        examples = ["https://www.mendesortega.com.br/"]
+        examples = ["www.mendesortega.com.br/"]
     elif live_ok:
-        examples = ["https://www.mendesortega.com.br/"]
+        examples = ["www.mendesortega.com.br/"]
     else:
         missing = ", ".join(_missing_live_keys())
         ask = (
             "Para iniciarmos, envie o endereço do seu site logo abaixo. "
             f"(Servidor ainda sem todas as API keys: {missing}.)"
         )
-        examples = ["https://www.mendesortega.com.br/"]
+        examples = ["www.mendesortega.com.br/"]
     return jsonify({
         "greeting": greeting,
         "ask": ask,
@@ -659,6 +659,19 @@ def job_events(job_id: str):
     def stream():
         # Snapshot inicial
         yield _sse({"type": "snapshot", "job_id": job_id, "status": job.status, "steps": job.steps})
+        # Se o job ja terminou (ex.: enrich rapido / SSE atrasado), reenvia o resultado
+        if job.status == "done":
+            yield _sse({
+                "type": "complete",
+                "job_id": job_id,
+                "report": job.report,
+                "enrich": (getattr(job.parsed, "kind", "") == "enrich"),
+                "progressive": True,
+            })
+            return
+        if job.status == "error":
+            yield _sse({"type": "error", "job_id": job_id, "message": job.error or "erro"})
+            return
         while True:
             try:
                 msg = job.queue.get(timeout=15)
@@ -686,9 +699,19 @@ def job_events(job_id: str):
 def enrich_competitors():
     """Adiciona ate 3 concorrentes e reprocessa Ads/SEO/Marca sem travar o fluxo principal."""
     data = request.get_json(silent=True) or {}
-    slug = (data.get("slug") or "").strip() or "chatguru"
-    company = (data.get("company") or "").strip() or slug
     parent_job_id = (data.get("job_id") or "").strip()
+    parent = jobs.get(parent_job_id) if parent_job_id else None
+
+    slug = (data.get("slug") or "").strip()
+    company = (data.get("company") or "").strip()
+    if parent and parent.parsed:
+        slug = slug or (parent.parsed.slug or "")
+        company = company or (parent.parsed.company or "")
+    if not slug and company:
+        from parse_input import slugify_client
+        slug = slugify_client(company)
+    slug = slug or "cliente"
+    company = company or slug
     demo = bool(data.get("demo"))
     raw = data.get("competitors")
     comps: list[str] = []
@@ -702,7 +725,6 @@ def enrich_competitors():
         return jsonify({"ok": True, "skipped": True})
 
     preferred = list(data.get("preferred") or [])
-    parent = jobs.get(parent_job_id) if parent_job_id else None
     if parent and parent.parsed and parent.parsed.competitors:
         for c in parent.parsed.competitors:
             if c not in preferred:
@@ -749,15 +771,17 @@ def enrich_competitors():
                     parent.report = result["report"]
             job.report = (result or {}).get("report")
             job.status = "done"
+            emit(job, "enrich_complete", added=comps, report=job.report)
             emit(job, "complete", report=job.report, enrich=True)
             if parent:
-                emit(parent, "enrich_complete", added=comps)
+                emit(parent, "enrich_complete", added=comps, report=job.report)
         except Exception as e:
             job.status = "error"
             job.error = str(e)
             emit(job, "error", message=str(e))
             if parent:
                 emit(parent, "log", line=f"Falha ao enriquecer concorrentes: {e}")
+                emit(parent, "enrich_error", message=str(e))
 
     try:
         usage_db.create_run(

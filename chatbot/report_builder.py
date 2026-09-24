@@ -11,6 +11,28 @@ import openpyxl
 ADS_COST_PER_AD = 1500  # R$ estimado / anuncio ativo Google (Transparency)
 META_ADS_COST_PER_AD = 500  # R$ estimado / anuncio ativo Meta
 
+
+def _google_transparency_url(domain: str, existing: str = "") -> str:
+    if (existing or "").strip():
+        return existing.strip()
+    dom = (domain or "").strip().lower().replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
+    if not dom:
+        return ""
+    return f"https://adstransparency.google.com/?region=BR&domain={dom}"
+
+
+def _meta_ads_library_url(domain: str, name: str = "", existing: str = "") -> str:
+    if (existing or "").strip():
+        return existing.strip()
+    from urllib.parse import quote
+    q = (name or domain or "").strip()
+    if not q:
+        return "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR"
+    return (
+        "https://www.facebook.com/ads/library/?active_status=active&ad_type=all"
+        f"&country=BR&q={quote(q)}&search_type=keyword_unordered"
+    )
+
 # Fallbacks quando Metricas Canais omite o cliente (export incompleto).
 # Valores alinhados ao radar_v2_chatguru de exemplo na pasta do projeto.
 CLIENT_ADS_FALLBACK = {
@@ -842,7 +864,7 @@ def build_report_from_xlsx(
             "investimento_fmt": _fmt_money(invest) if ads else "R$ 0",
             "pct": round(pct),
             "pct_fmt": f"{round(pct)}%",
-            "url": e.get("google_ads_url") or "",
+            "url": _google_transparency_url(e.get("domain") or "", e.get("google_ads_url") or ""),
             "is_client": bool(e.get("is_client")),
         })
 
@@ -1010,6 +1032,11 @@ def build_report_from_xlsx(
             "value": ads_n,
             "value_fmt": _fmt_int(ads_n),
             "bar": max(1, int(round(ads_n / max_meta * 100))) if ads_n else 1,
+            "url": _meta_ads_library_url(
+                e.get("domain") or "",
+                e.get("name") or "",
+                e.get("meta_ads_url") or "",
+            ),
         })
     meta_client_rank = next((i + 1 for i, r in enumerate(meta_table) if r.get("is_client")), None)
     meta_leader = next((r["name"] for r in meta_table if (r.get("ads") or 0) > 0), None) or (
@@ -1347,7 +1374,7 @@ def append_user_competitors(
         c_url = _col("url")
         c_sim = _col("similaridade")
         c_fonte = _col("fonte")
-        c_nome = _col("nome", "empresa")
+        c_nome = _col("nome", "empresa", "titulo", "título")
         existing_doms = set()
         for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
             if not row:

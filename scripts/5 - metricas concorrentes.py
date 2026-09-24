@@ -266,13 +266,14 @@ def load_top_alto_competitors(xlsx_path: Path, limit: int = TOP_COMPETITORS) -> 
         i = idx.get(name)
         return row[i] if i is not None and i < len(row) else ""
 
-    out = []
+    altos: list[dict] = []
+    user_added: list[dict] = []
     for row in rows[1:]:
         if not any(row):
             continue
         if cell(row, "Similaridade") != "Alto":
             continue
-        out.append({
+        item = {
             "domain": normalize_domain(cell(row, "Dominio")),
             "url": cell(row, "URL"),
             "title": cell(row, "Titulo"),
@@ -280,9 +281,23 @@ def load_top_alto_competitors(xlsx_path: Path, limit: int = TOP_COMPETITORS) -> 
             "perfil": cell(row, "Perfil"),
             "fonte": cell(row, "Fonte"),
             "nicho": cell(row, "Nicho (LLM)"),
-        })
-        if len(out) >= limit:
-            break
+        }
+        if not item["domain"]:
+            continue
+        fonte_l = (item["fonte"] or "").strip().lower()
+        # Concorrentes do usuario (enrich) entram sempre, mesmo alem do top N
+        if "usuario" in fonte_l or "user" in fonte_l:
+            user_added.append(item)
+        else:
+            altos.append(item)
+
+    out = altos[:limit]
+    seen = {c["domain"] for c in out}
+    for u in user_added:
+        if u["domain"] in seen:
+            continue
+        out.append(u)
+        seen.add(u["domain"])
     return out
 
 
@@ -686,19 +701,30 @@ def social_links_from_homepage(url: str, company_name: str = "") -> dict[str, st
     return out
 
 
-def _fetch_via_scrapingbee(url: str) -> str:
-    params = {"api_key": SCRAPINGBEE_API_KEY, "url": url, "render_js": "false"}
-    r = requests.get("https://app.scrapingbee.com/api/v1/", params=params, timeout=60)
+def _fetch_via_scrapingbee(url: str, render_js: bool = False) -> str:
+    if not SCRAPINGBEE_API_KEY:
+        raise RuntimeError("SCRAPINGBEE_API_KEY ausente")
+    params = {
+        "api_key": SCRAPINGBEE_API_KEY,
+        "url": url,
+        "render_js": "true" if render_js else "false",
+    }
+    r = requests.get("https://app.scrapingbee.com/api/v1/", params=params, timeout=90)
     r.raise_for_status()
     return r.text
 
 
-def fetch_url_text(url: str, allow_proxy: bool = False, prefer_proxy: bool = False) -> str:
+def fetch_url_text(
+    url: str,
+    allow_proxy: bool = False,
+    prefer_proxy: bool = False,
+    render_js: bool = False,
+) -> str:
     if not url:
         return ""
     if allow_proxy and prefer_proxy:
         try:
-            return _fetch_via_scrapingbee(url)
+            return _fetch_via_scrapingbee(url, render_js=render_js)
         except Exception:
             pass
     try:
@@ -709,13 +735,18 @@ def fetch_url_text(url: str, allow_proxy: bool = False, prefer_proxy: bool = Fal
         if not allow_proxy:
             return ""
     try:
-        return _fetch_via_scrapingbee(url)
+        return _fetch_via_scrapingbee(url, render_js=render_js)
     except Exception:
         return ""
 
 
 def parse_instagram_followers(url: str) -> int | None:
-    text = fetch_url_text(url, allow_proxy=True, prefer_proxy=False)
+    # Instagram bloqueia IP direto e exige JS — ScrapingBee com render_js
+    text = fetch_url_text(url, allow_proxy=True, prefer_proxy=True, render_js=True)
+    if not text:
+        text = fetch_url_text(url, allow_proxy=True, prefer_proxy=True, render_js=False)
+    if not text:
+        text = fetch_url_text(url, allow_proxy=True, prefer_proxy=False)
     if not text:
         return None
     soup = BeautifulSoup(text, "html.parser")
@@ -742,7 +773,11 @@ def parse_instagram_followers(url: str) -> int | None:
 
 
 def parse_youtube_followers(url: str) -> int | None:
-    text = fetch_url_text(url, allow_proxy=True, prefer_proxy=False)
+    text = fetch_url_text(url, allow_proxy=True, prefer_proxy=True, render_js=True)
+    if not text:
+        text = fetch_url_text(url, allow_proxy=True, prefer_proxy=True, render_js=False)
+    if not text:
+        text = fetch_url_text(url, allow_proxy=True, prefer_proxy=False)
     if not text:
         return None
     text_ascii = ascii_text(text)
