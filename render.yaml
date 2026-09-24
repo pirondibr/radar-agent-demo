@@ -2,22 +2,20 @@ services:
   - type: web
     name: radar-agent-demo
     runtime: python
-    plan: free
+    plan: pro
     buildCommand: pip install -r chatbot/requirements.txt
     startCommand: gunicorn -b 0.0.0.0:$PORT --workers 1 --threads 8 --timeout 900 --graceful-timeout 60 --keep-alive 75 --chdir chatbot server:app
-    # Persistencia: no plano Free o disco some a cada deploy.
-    # No Starter+, descomente o bloco disk abaixo e defina RADAR_DATA_DIR=/var/data
-    # disk:
-    #   name: radar-data
-    #   mountPath: /var/data
-    #   sizeGB: 1
+    disk:
+      name: radar-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: DEMO_ONLY
         value: "0"
       - key: PYTHON_VERSION
         value: "3.12.0"
-      # - key: RADAR_DATA_DIR
-      #   value: /var/data
+      - key: RADAR_DATA_DIR
+        value: /var/data
       - key: OPENROUTER_API_KEY
         sync: false
       - key: SCRAPINGBEE_API_KEY
