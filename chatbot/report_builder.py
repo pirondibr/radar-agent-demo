@@ -323,6 +323,31 @@ def _is_client_entity(entity: dict[str, Any], client_name: str, client_domain: s
     return False
 
 
+def _pref_tokens(pref: str) -> list[str]:
+    """Normaliza URL/nome de concorrente preferido para matching."""
+    raw = (pref or "").strip().lower()
+    if not raw:
+        return []
+    cleaned = raw.replace("https://", "").replace("http://", "").replace("www.", "")
+    host = cleaned.split("/")[0].strip()
+    tokens = {raw, cleaned, host, _slug(pref)}
+    if host:
+        tokens.add(host.replace(".com.br", "").replace(".com", ""))
+    return [t for t in tokens if t]
+
+
+def _matches_preferred(name: str, domain: str, preferred: list[str]) -> bool:
+    if not preferred:
+        return False
+    name_l = (name or "").lower()
+    dom_l = (domain or "").lower()
+    for pref in preferred:
+        for t in _pref_tokens(pref):
+            if t in name_l or t in dom_l or (dom_l and (t == dom_l or dom_l.startswith(t + ".") or t in dom_l)):
+                return True
+    return False
+
+
 def prioritize_competitors(
     rows: list[dict[str, Any]],
     preferred: list[str],
@@ -333,13 +358,15 @@ def prioritize_competitors(
     def score(row: dict) -> tuple:
         if row.get("is_client"):
             return (-1, 0)  # client first in list card context handled separately
-        label = (row.get("name") or "").lower()
-        domain = (row.get("domain") or "").lower()
-        for i, pref in enumerate(preferred):
-            p = pref.lower().strip()
-            p_slug = _slug(p)
-            if p in label or p in domain or p_slug in domain or p_slug in label:
-                return (0, i)
+        if _matches_preferred(row.get("name") or "", row.get("domain") or "", preferred):
+            # preserve order among preferred
+            for i, pref in enumerate(preferred):
+                if _matches_preferred(row.get("name") or "", row.get("domain") or "", [pref]):
+                    return (0, i)
+            return (0, 99)
+        fonte = str(row.get("fonte") or "").lower()
+        if "usuario" in fonte or "user" in fonte:
+            return (0, 50)
         return (1, 99)
 
     return sorted(rows, key=score)
@@ -372,6 +399,7 @@ def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[l
 
     Prefere Alto. Se nao houver nenhum Alto, faz fallback para Medio e depois
     qualquer concorrente (inclui preferidos), para nao deixar a lista vazia.
+    Sempre inclui concorrentes preferred / Fonte=Usuario mesmo alem do top N.
     Retorna (lista, meta) com display_tier e contagens.
     """
     client_rows = [c for c in competitors if c.get("is_client")]
@@ -384,6 +412,12 @@ def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[l
             c for c in non_client
             if str(c.get("similaridade") or "").strip().lower().replace("é", "e") == sim_l
         ]
+
+    def _is_user_pick(c: dict[str, Any]) -> bool:
+        if c.get("preferred"):
+            return True
+        fonte = str(c.get("fonte") or "").lower()
+        return "usuario" in fonte or "user" in fonte
 
     altos = _tier("alto")[:COMPETITORS_DISPLAY_LIMIT]
     display_tier = "alto"
@@ -399,7 +433,7 @@ def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[l
                 "Mostrando concorrentes de similaridade média."
             )
         else:
-            preferred = [c for c in non_client if c.get("preferred")][:COMPETITORS_DISPLAY_LIMIT]
+            preferred = [c for c in non_client if _is_user_pick(c)][:COMPETITORS_DISPLAY_LIMIT]
             if preferred:
                 chosen = preferred
                 display_tier = "preferred"
@@ -417,6 +451,16 @@ def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[l
             else:
                 display_tier = "none"
                 note = "A pesquisa não encontrou concorrentes para este site."
+
+    # Garante que picks do usuario aparecem mesmo se o top Alto ja estiver cheio
+    seen = {(c.get("domain") or "").lower() for c in chosen}
+    for c in non_client:
+        if not _is_user_pick(c):
+            continue
+        dom = (c.get("domain") or "").lower()
+        if dom and dom not in seen:
+            chosen.append(c)
+            seen.add(dom)
 
     out: list[dict[str, Any]] = []
     if client_rows:
@@ -821,27 +865,115 @@ def build_report_from_xlsx(
             e["marca"] = client_from_sheet.get("marca")
 
     preferred = preferred_competitors or []
+
+    # Injeta Fonte=Usuario / preferred ausentes em Metricas Canais
+    seen_doms = {(e.get("domain") or "").lower() for e in entities}
+    if unified_rows:
+        idx_u2 = _header_index(unified_rows[0])
+        for row in unified_rows[1:]:
+            if not row or not any(row):
+                continue
+            domain = str(_get(row, idx_u2, "dominio", "domínio") or "").strip()
+            if not domain:
+                continue
+            dom_key = domain.lower()
+            if dom_key in seen_doms:
+                continue
+            fonte = str(_get(row, idx_u2, "fonte") or "")
+            fonte_l = fonte.lower()
+            is_user = "usuario" in fonte_l or "user" in fonte_l
+            is_pref = _matches_preferred(_domain_label(domain), domain, preferred)
+            if not (is_user or is_pref):
+                continue
+            entities.append({
+                "domain": domain,
+                "name": _domain_label(domain),
+                "similaridade": str(_get(row, idx_u2, "similaridade") or "Alto"),
+                "perfil": str(_get(row, idx_u2, "perfil") or "n/d"),
+                "fonte": fonte or "Usuario",
+                "nicho": niche_by_domain.get(dom_key, ""),
+                "seo": None,
+                "marca": None,
+                "google_ads": 0,
+                "google_ads_url": "",
+                "meta_ads": None,
+                "meta_ads_url": "",
+                "linkedin_ads": None,
+                "linkedin_ads_url": "",
+                "instagram_followers": None,
+                "instagram_url": "",
+                "youtube_followers": None,
+                "youtube_url": "",
+                "seo_growth": growth.get(dom_key),
+                "brand_growth": brand_growth.get(dom_key),
+                "growth_years": growth_years.get(dom_key),
+                "url": str(_get(row, idx_u2, "url") or f"https://{domain}/"),
+                "is_client": False,
+            })
+            seen_doms.add(dom_key)
+
+    # Tambem injeta preferred que ainda nao estao em lugar nenhum (demo / race)
+    for pref in preferred:
+        raw = (pref or "").strip().lower().replace("https://", "").replace("http://", "").replace("www.", "")
+        if not raw:
+            continue
+        if "." in raw.split("/")[0] and " " not in raw.split("/")[0]:
+            dom = raw.split("/")[0].strip()
+        else:
+            dom = f"{_slug(pref)}.com.br"
+        if dom in seen_doms:
+            continue
+        entities.append({
+            "domain": dom,
+            "name": _domain_label(dom),
+            "similaridade": "Alto",
+            "perfil": "n/d",
+            "fonte": "Usuario",
+            "nicho": "",
+            "seo": None,
+            "marca": None,
+            "google_ads": 0,
+            "google_ads_url": "",
+            "meta_ads": None,
+            "meta_ads_url": "",
+            "linkedin_ads": None,
+            "linkedin_ads_url": "",
+            "instagram_followers": None,
+            "instagram_url": "",
+            "youtube_followers": None,
+            "youtube_url": "",
+            "seo_growth": growth.get(dom),
+            "brand_growth": brand_growth.get(dom),
+            "growth_years": growth_years.get(dom),
+            "url": f"https://{dom}/",
+            "is_client": False,
+        })
+        seen_doms.add(dom)
+
+    def _entity_is_user_pick(e: dict[str, Any]) -> bool:
+        if e.get("is_client"):
+            return False
+        fonte_l = str(e.get("fonte") or "").lower()
+        if "usuario" in fonte_l or "user" in fonte_l:
+            return True
+        return _matches_preferred(e.get("name") or "", e.get("domain") or "", preferred)
+
     entities_for_card = prioritize_competitors(entities, preferred)
 
     competitors = []
     for e in entities_for_card:
-        name_l = e["name"].lower()
-        dom_l = e["domain"].lower()
         competitors.append({
             **{k: e[k] for k in ("domain", "name", "similaridade", "perfil", "fonte", "nicho", "url")},
             "is_client": bool(e.get("is_client")),
-            "preferred": (not e.get("is_client")) and any(
-                p.lower() in name_l or p.lower() in dom_l or _slug(p) in dom_l
-                for p in preferred
-            ),
+            "preferred": _entity_is_user_pick(e),
         })
     competitors_all = list(competitors)
     competitors, filter_meta = filter_competitors_for_display(competitors)
 
-    # Google Ads ranking, include client even with 0 ads
+    # Google Ads: cliente + quem anuncia + picks do usuario (mesmo com 0)
     ads_entities = [
         e for e in entities
-        if (e.get("google_ads") or 0) > 0 or e.get("is_client")
+        if (e.get("google_ads") or 0) > 0 or e.get("is_client") or _entity_is_user_pick(e)
     ]
     ads_rows_sorted = sorted(
         ads_entities,
@@ -871,7 +1003,7 @@ def build_report_from_xlsx(
     # SEO ranking
     seo_entities = [
         e for e in entities
-        if (e.get("seo") or 0) > 0 or e.get("is_client")
+        if (e.get("seo") or 0) > 0 or e.get("is_client") or _entity_is_user_pick(e)
     ]
     seo_rows_sorted = sorted(
         seo_entities,
@@ -903,7 +1035,7 @@ def build_report_from_xlsx(
     # Brand Search ranking (Semrush Marca Atual)
     brand_entities = [
         e for e in entities
-        if (e.get("marca") or 0) > 0 or e.get("is_client")
+        if (e.get("marca") or 0) > 0 or e.get("is_client") or _entity_is_user_pick(e)
     ]
     brand_rows_sorted = sorted(
         brand_entities,
@@ -1267,9 +1399,9 @@ def load_competitors_xlsx(
             "nicho": e.get("nicho") or "",
             "url": e.get("url") or "",
             "is_client": bool(e.get("is_client")),
-            "preferred": (not e.get("is_client")) and any(
-                p.lower() in name_l or p.lower() in dom_l or _slug(p) in dom_l
-                for p in preferred
+            "preferred": (not e.get("is_client")) and (
+                _matches_preferred(e["name"], e["domain"], preferred)
+                or "usuario" in str(e.get("fonte") or "").lower()
             ),
         })
     competitors, filter_meta = filter_competitors_for_display(competitors)
@@ -1344,12 +1476,19 @@ def append_user_competitors(
     path = Path(concorrentes_xlsx) if concorrentes_xlsx else None
     if path and path.exists():
         wb = openpyxl.load_workbook(path)
-        # Prefer sheet unificado
+        # Preferir SEMPRE a aba Unificado (metricas leem so dela).
+        # Evitar pegar "Concorrentes SEO" so porque contem a palavra concorrente.
         ws = None
         for name in wb.sheetnames:
-            if "unificado" in name.lower() or "concorrente" in name.lower():
+            if "unificado" in name.lower():
                 ws = wb[name]
                 break
+        if ws is None:
+            for name in wb.sheetnames:
+                low = name.lower()
+                if "concorrente" in low and "seo" not in low and "llm" not in low and "maps" not in low and "ads" not in low:
+                    ws = wb[name]
+                    break
         if ws is None:
             ws = wb.active
         # Find header row
@@ -1389,8 +1528,27 @@ def append_user_competitors(
                 dom = raw.split("/")[0].strip()
             else:
                 dom = f"{_slug(name)}.com.br"
+            display_name = _domain_label(dom) if ("." in name or "://" in name) else (name if " " in name else _domain_label(dom))
             if dom.lower() in existing_doms:
-                added.append({"name": _domain_label(dom), "domain": dom, "similaridade": "Alto", "preferred": True})
+                added.append({
+                    "name": display_name,
+                    "domain": dom,
+                    "similaridade": "Alto",
+                    "preferred": True,
+                    "fonte": "Usuario",
+                })
+                # Garante Fonte=Usuario na Unificado mesmo se dominio ja existia
+                for r_idx, row in enumerate(ws.iter_rows(min_row=header_row + 1), header_row + 1):
+                    if c_dom is None:
+                        break
+                    cell_dom = row[c_dom].value if c_dom < len(row) else None
+                    if str(cell_dom or "").strip().lower() != dom.lower():
+                        continue
+                    if c_sim is not None and c_sim < len(row):
+                        row[c_sim].value = "Alto"
+                    if c_fonte is not None and c_fonte < len(row):
+                        row[c_fonte].value = "Usuario"
+                    break
                 continue
             width = max(len(headers), 8)
             row = [""] * width
@@ -1403,15 +1561,15 @@ def append_user_competitors(
             if c_fonte is not None:
                 row[c_fonte] = "Usuario"
             if c_nome is not None:
-                row[c_nome] = name
+                row[c_nome] = display_name
             # Se nao achou colunas, append simples
             if c_dom is None and c_nome is None:
-                ws.append([name, dom, "Alto", "Usuario", f"https://{dom}/"])
+                ws.append([display_name, dom, "Alto", "Usuario", f"https://{dom}/"])
             else:
                 ws.append(row)
             existing_doms.add(dom.lower())
             added.append({
-                "name": name if " " in name else _domain_label(dom),
+                "name": display_name,
                 "domain": dom,
                 "similaridade": "Alto",
                 "preferred": True,
@@ -1430,8 +1588,9 @@ def append_user_competitors(
                 dom = raw.split("/")[0].strip()
             else:
                 dom = f"{_slug(name)}.com.br"
+            display_name = _domain_label(dom) if ("." in name or "://" in name) else (name if " " in name else _domain_label(dom))
             added.append({
-                "name": name if " " in name else _domain_label(dom),
+                "name": display_name,
                 "domain": dom,
                 "similaridade": "Alto",
                 "preferred": True,
