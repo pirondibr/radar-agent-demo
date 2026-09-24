@@ -51,6 +51,26 @@ SOCIAL_URL_FALLBACK = {
     },
 }
 
+# Contagens ausentes na planilha.
+# YouTube: Innertube no IP local (rótulo público "3,61 mil inscritos" = 3.610).
+# Instagram e TikTok: IP local bloqueou; RapidAPI já usada no Radar.
+SOCIAL_COUNT_FALLBACK = {
+    "chatguru": {
+        "instagram_followers": 25542,
+        "youtube_followers": 3610,
+        "tiktok_followers": 21500,
+    },
+    "blip": {
+        "tiktok_followers": 1062,
+    },
+    "totalchat": {
+        "instagram_followers": 10844,
+    },
+    "underchat": {
+        "instagram_followers": 36,
+    },
+}
+
 
 def _fmt_int(n: Optional[float | int]) -> str:
     if n is None:
@@ -895,6 +915,11 @@ def build_report_from_xlsx(
             for field, url in social_fb.items():
                 if not str(e.get(field) or "").strip():
                     e[field] = url
+        count_fb = SOCIAL_COUNT_FALLBACK.get(_slug(e.get("domain") or ""))
+        if count_fb:
+            for field, count in count_fb.items():
+                if not e.get(field):
+                    e[field] = count
         # Fill brand growth from sheet if missing on competitors
         if e.get("brand_growth") is None:
             e["brand_growth"] = brand_growth.get((e.get("domain") or "").lower())
