@@ -36,7 +36,19 @@ def _meta_ads_library_url(domain: str, name: str = "", existing: str = "") -> st
 # Fallbacks quando Metricas Canais omite o cliente (export incompleto).
 # Valores alinhados ao radar_v2_chatguru de exemplo na pasta do projeto.
 CLIENT_ADS_FALLBACK = {
-    "chatguru": 200,
+    "chatguru": 100,
+}
+
+# Perfis oficiais quando a planilha da demo não traz o link.
+SOCIAL_URL_FALLBACK = {
+    "chatguru": {
+        "instagram_url": "https://www.instagram.com/chatguruoficial/",
+        "youtube_url": "https://www.youtube.com/@ChatGuru",
+        "tiktok_url": "https://www.tiktok.com/@chatguruoficial",
+    },
+    "blip": {
+        "tiktok_url": "https://www.tiktok.com/@blipbr",
+    },
 }
 
 
@@ -878,6 +890,11 @@ def build_report_from_xlsx(
                 fb = CLIENT_ADS_FALLBACK.get(_slug(e.get("domain") or client_label))
                 if fb:
                     e["google_ads"] = fb
+        social_fb = SOCIAL_URL_FALLBACK.get(_slug(e.get("domain") or ""))
+        if social_fb:
+            for field, url in social_fb.items():
+                if not str(e.get(field) or "").strip():
+                    e[field] = url
         # Fill brand growth from sheet if missing on competitors
         if e.get("brand_growth") is None:
             e["brand_growth"] = brand_growth.get((e.get("domain") or "").lower())

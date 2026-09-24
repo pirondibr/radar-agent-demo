@@ -174,7 +174,7 @@ body.video-mode .main{padding-bottom:24px}
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.11';
+const APP_VERSION = '1.5.12';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const thread = document.getElementById('thread');
@@ -694,10 +694,13 @@ function renderProTeaser(opts) {
 
 function analysisBlocks(channel, analysisTitle, insight, proHook) {
  const coClass = channel === 'seo' ? 'ci' : (channel === 'brand' ? 'cs' : 'cw');
+ const hook = (!VIDEO_MODE && proHook)
+  ? `<div class="co ci co-hook"><div class="co-title">Versão Pro</div><div class="co-body">${esc(proHook)}</div></div>`
+  : '';
  return `
  <div class="co ${coClass}"><div class="co-title">${esc(analysisTitle || 'Analise Cliente vs concorrentes')}</div>
  <div class="co-body">${esc(insight || '')}</div></div>
- ${proHook ? `<div class="co ci co-hook"><div class="co-title">Versão Pro</div><div class="co-body">${esc(proHook)}</div></div>` : ''}
+ ${hook}
  `;
 }
 
