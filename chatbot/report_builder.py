@@ -8,7 +8,8 @@ from typing import Any, Optional
 
 import openpyxl
 
-ADS_COST_PER_AD = 1500  # R$ estimado / anuncio ativo (mesmo padrao do HTML radar_v2)
+ADS_COST_PER_AD = 1500  # R$ estimado / anuncio ativo Google (Transparency)
+META_ADS_COST_PER_AD = 500  # R$ estimado / anuncio ativo Meta
 
 # Fallbacks quando Metricas Canais omite o cliente (export incompleto).
 # Valores alinhados ao radar_v2_chatguru de exemplo na pasta do projeto.
@@ -128,14 +129,34 @@ def _find_header_row(rows: list[tuple], *needles: str) -> Optional[int]:
     return None
 
 
-def _growth_and_client(rows: list[tuple]) -> tuple[dict[str, Optional[float]], dict[str, Optional[float]], Optional[dict[str, Any]]]:
-    """domain -> Cresc SEO 1a (%), Cresc Marca 1a (%); plus client row if Tipo=Cliente."""
+def _pick_best_growth(row, idx: dict[str, int], kind: str) -> tuple[Optional[float], Optional[int]]:
+    """Prefere crescimento em 3 anos; se nao houver, 2a; senao 1a.
+
+    kind: 'seo' | 'marca'
+    Retorna (valor_pct, anos_usados).
+    """
+    kind_l = "seo" if kind == "seo" else "marca"
+    candidates = [
+        (3, [f"cresc {kind_l} 3a (%)", f"cresc {kind_l} 3a", f"crescimento {kind_l} 3a"]),
+        (2, [f"cresc {kind_l} 2a (%)", f"cresc {kind_l} 2a", f"crescimento {kind_l} 2a"]),
+        (1, [f"cresc {kind_l} 1a (%)", f"cresc {kind_l} 1a", "crescimento" if kind_l == "seo" else "cresc marca 1a"]),
+    ]
+    for years, keys in candidates:
+        val = _safe_float(_get(row, idx, *keys))
+        if val is not None:
+            return val, years
+    return None, None
+
+
+def _growth_and_client(rows: list[tuple]) -> tuple[dict[str, Optional[float]], dict[str, Optional[float]], Optional[dict[str, Any]], dict[str, int]]:
+    """domain -> crescimento SEO/marca (melhor horizonte 3a>2a>1a); plus client row."""
     seo_out: dict[str, Optional[float]] = {}
     brand_out: dict[str, Optional[float]] = {}
+    years_out: dict[str, int] = {}
     client: Optional[dict[str, Any]] = None
     header_i = _find_header_row(rows, "dominio", "domínio")
     if header_i is None:
-        return seo_out, brand_out, client
+        return seo_out, brand_out, client, years_out
     idx = _header_index(rows[header_i])
     for row in rows[header_i + 1 :]:
         if not row or not any(row):
@@ -143,10 +164,15 @@ def _growth_and_client(rows: list[tuple]) -> tuple[dict[str, Optional[float]], d
         dom = str(_get(row, idx, "dominio", "domínio") or "").strip()
         if not dom:
             continue
-        seo_g = _safe_float(_get(row, idx, "cresc seo 1a (%)", "cresc seo 1a", "crescimento"))
-        brand_g = _safe_float(_get(row, idx, "cresc marca 1a (%)", "cresc marca 1a"))
+        seo_g, seo_y = _pick_best_growth(row, idx, "seo")
+        brand_g, brand_y = _pick_best_growth(row, idx, "marca")
         seo_out[dom.lower()] = seo_g
         brand_out[dom.lower()] = brand_g
+        # Guarda o horizonte SEO (ou marca se so houver marca)
+        if seo_y:
+            years_out[dom.lower()] = seo_y
+        elif brand_y:
+            years_out[dom.lower()] = brand_y
         tipo = str(_get(row, idx, "tipo") or "").strip().lower()
         if tipo.startswith("cliente"):
             client = {
@@ -156,9 +182,10 @@ def _growth_and_client(rows: list[tuple]) -> tuple[dict[str, Optional[float]], d
                 "marca": _safe_int(_get(row, idx, "marca atual")),
                 "seo_growth": seo_g,
                 "brand_growth": brand_g,
+                "growth_years": seo_y or brand_y,
                 "perfil": str(_get(row, idx, "perfil") or "n/d"),
             }
-    return seo_out, brand_out, client
+    return seo_out, brand_out, client, years_out
 
 
 def _build_brand_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict[str, str]:
@@ -635,7 +662,7 @@ def build_report_from_xlsx(
         elif "cliente" in key:
             briefing_meta["input"] = val
 
-    growth, brand_growth, client_from_sheet = _growth_and_client(growth_rows)
+    growth, brand_growth, client_from_sheet, growth_years = _growth_and_client(growth_rows)
     client_domain = (client_from_sheet or {}).get("domain", "")
     client_label = client_name or (client_from_sheet or {}).get("name") or "Cliente"
 
@@ -687,6 +714,7 @@ def build_report_from_xlsx(
                 "youtube_url": str(_get(row, idx, "youtube url", "youtube url") or ""),
                 "seo_growth": growth.get(dom_key),
                 "brand_growth": brand_growth.get(dom_key),
+                "growth_years": growth_years.get(dom_key),
                 "url": str(_get(row, idx, "url") or ""),
                 "is_client": False,
             })
@@ -717,6 +745,7 @@ def build_report_from_xlsx(
             "youtube_url": "",
             "seo_growth": client_from_sheet.get("seo_growth"),
             "brand_growth": client_from_sheet.get("brand_growth"),
+            "growth_years": client_from_sheet.get("growth_years"),
             "url": f"https://{client_from_sheet['domain']}/",
             "is_client": True,
         })
@@ -743,6 +772,7 @@ def build_report_from_xlsx(
             "youtube_url": "",
             "seo_growth": growth.get(guess_dom.lower()),
             "brand_growth": brand_growth.get(guess_dom.lower()),
+            "growth_years": growth_years.get(guess_dom.lower()),
             "url": f"https://{guess_dom}/",
             "is_client": True,
         })
@@ -833,6 +863,7 @@ def build_report_from_xlsx(
         seo = e.get("seo") or 0
         bar = int(round(seo / max_seo * 100)) if max_seo else 1
         g = e.get("seo_growth")
+        gy = e.get("growth_years")
         seo_table.append({
             "name": e["name"],
             "domain": e["domain"],
@@ -841,6 +872,7 @@ def build_report_from_xlsx(
             "bar": max(bar, 1) if seo else 1,
             "growth": g,
             "growth_fmt": _fmt_pct(g) if g is not None else "n/d",
+            "growth_years": gy,
             "growth_up": g is not None and g >= 0,
             "growth_hot": g is not None and g >= 100,
             "is_client": bool(e.get("is_client")),
@@ -863,6 +895,7 @@ def build_report_from_xlsx(
         marca = e.get("marca") or 0
         bar = int(round(marca / max_brand * 100)) if max_brand else 1
         g = e.get("brand_growth")
+        gy = e.get("growth_years")
         brand_table.append({
             "name": e["name"],
             "domain": e["domain"],
@@ -871,6 +904,7 @@ def build_report_from_xlsx(
             "bar": max(bar, 1) if marca else 1,
             "growth": g,
             "growth_fmt": _fmt_pct(g) if g is not None else "n/d",
+            "growth_years": gy,
             "growth_up": g is not None and g >= 0,
             "growth_hot": g is not None and g >= 100,
             "is_client": bool(e.get("is_client")),
@@ -951,10 +985,50 @@ def build_report_from_xlsx(
             "unit": unit,
         }
 
-    meta_section = _count_section(
-        "meta_ads", "meta_ads_url", "Meta Ads", "anúncios",
-        "Na versão Pro comparamos criativos Meta, formatos e o que o líder testa e você ainda não.",
+    meta_entities = [
+        e for e in entities
+        if (e.get("meta_ads") or 0) > 0 or e.get("is_client")
+    ]
+    meta_sorted = sorted(meta_entities, key=lambda x: (x.get("meta_ads") or 0), reverse=True)
+    total_meta_ads = sum(e.get("meta_ads") or 0 for e in meta_sorted)
+    total_meta_invest = total_meta_ads * META_ADS_COST_PER_AD
+    max_meta = max((e.get("meta_ads") or 0 for e in meta_sorted), default=1) or 1
+    meta_table = []
+    for e in meta_sorted:
+        ads_n = e.get("meta_ads") or 0
+        invest = ads_n * META_ADS_COST_PER_AD
+        meta_table.append({
+            "name": e["name"],
+            "domain": e["domain"],
+            "ads": ads_n,
+            "ads_fmt": _fmt_int(ads_n),
+            "investimento": invest,
+            "investimento_fmt": _fmt_money(invest) if invest else "R$ 0",
+            "pct": (ads_n / total_meta_ads * 100) if total_meta_ads else 0,
+            "pct_fmt": ("%.1f%%" % ((ads_n / total_meta_ads * 100) if total_meta_ads and ads_n else 0)),
+            "is_client": bool(e.get("is_client")),
+            "value": ads_n,
+            "value_fmt": _fmt_int(ads_n),
+            "bar": max(1, int(round(ads_n / max_meta * 100))) if ads_n else 1,
+        })
+    meta_client_rank = next((i + 1 for i, r in enumerate(meta_table) if r.get("is_client")), None)
+    meta_leader = next((r["name"] for r in meta_table if (r.get("ads") or 0) > 0), None) or (
+        meta_table[0]["name"] if meta_table else "—"
     )
+    meta_section = {
+        "total_fmt": _fmt_int(total_meta_ads) if total_meta_ads else "0",
+        "total": total_meta_ads,
+        "total_invest_fmt": _fmt_money(total_meta_invest) if total_meta_invest else "R$ 0",
+        "leader": meta_leader,
+        "client_rank": meta_client_rank,
+        "rows": meta_table,
+        "insight": "Estimativa de investimento Meta: R$ %s por anúncio ativo." % META_ADS_COST_PER_AD,
+        "analysis_title": "Analise Cliente vs concorrentes (Meta Ads)",
+        "pro_hook": "Na versão Pro comparamos criativos Meta, formatos e o que o líder testa e você ainda não.",
+        "unit": "anúncios",
+        "show_investment": True,
+        "cost_per_ad": META_ADS_COST_PER_AD,
+    }
     linkedin_section = _count_section(
         "linkedin_ads", "linkedin_ads_url", "LinkedIn Ads", "anúncios",
         "Na versão Pro aprofundamos mensagens B2B e anúncios LinkedIn do líder do nicho.",
@@ -996,6 +1070,7 @@ def build_report_from_xlsx(
         "competitors_note": filter_meta.get("competitors_note") or "",
         "display_tier": filter_meta.get("display_tier") or "",
         "competitors_stats": filter_meta.get("counts") or {},
+        "growth_period_label": "Comparativo com até 3 anos (ou o período mais longo disponível).",
         "competitors_raw": competitors_all,
         "filter_meta": filter_meta,
         "google_ads": {
@@ -1214,3 +1289,129 @@ def build_early_briefing_competitors(
         "competitors_raw": comps.get("competitors_raw") or [],
         "filter_meta": comps.get("filter_meta") or {},
     }
+
+
+def append_user_competitors(
+    concorrentes_xlsx: Optional[Path],
+    names: list[str],
+    *,
+    client_name: str = "",
+) -> list[dict[str, Any]]:
+    """Inclui ate 3 concorrentes informados pelo usuario no XLSX (similaridade Alto).
+
+    Retorna lista de dicts adicionados (name/domain) para a UI.
+    """
+    added: list[dict[str, Any]] = []
+    clean: list[str] = []
+    for n in names or []:
+        s = str(n or "").strip()
+        if not s or s.lower() in {"nenhum", "nenhuma", "nao", "não", "n/a", "-", "pular", "skip"}:
+            continue
+        if s not in clean:
+            clean.append(s)
+        if len(clean) >= 3:
+            break
+    if not clean:
+        return added
+
+    path = Path(concorrentes_xlsx) if concorrentes_xlsx else None
+    if path and path.exists():
+        wb = openpyxl.load_workbook(path)
+        # Prefer sheet unificado
+        ws = None
+        for name in wb.sheetnames:
+            if "unificado" in name.lower() or "concorrente" in name.lower():
+                ws = wb[name]
+                break
+        if ws is None:
+            ws = wb.active
+        # Find header row
+        header_row = 1
+        headers: list[str] = []
+        for i, row in enumerate(ws.iter_rows(values_only=True), 1):
+            cells = [str(c or "").strip().lower() for c in row]
+            if any("domin" in c for c in cells) or any("empresa" in c or "nome" in c for c in cells):
+                header_row = i
+                headers = cells
+                break
+        col_map = {h: i for i, h in enumerate(headers) if h}
+
+        def _col(*names: str) -> Optional[int]:
+            for n in names:
+                for h, i in col_map.items():
+                    if n in h:
+                        return i
+            return None
+
+        c_dom = _col("dominio", "domínio", "domain")
+        c_url = _col("url")
+        c_sim = _col("similaridade")
+        c_fonte = _col("fonte")
+        c_nome = _col("nome", "empresa")
+        existing_doms = set()
+        for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+            if not row:
+                continue
+            if c_dom is not None and c_dom < len(row) and row[c_dom]:
+                existing_doms.add(str(row[c_dom]).strip().lower())
+
+        for name in clean:
+            # Heuristica de dominio
+            raw = name.lower().replace("https://", "").replace("http://", "").replace("www.", "")
+            if "." in raw.split()[0] and " " not in raw.split("/")[0]:
+                dom = raw.split("/")[0].strip()
+            else:
+                dom = f"{_slug(name)}.com.br"
+            if dom.lower() in existing_doms:
+                added.append({"name": _domain_label(dom), "domain": dom, "similaridade": "Alto", "preferred": True})
+                continue
+            width = max(len(headers), 8)
+            row = [""] * width
+            if c_dom is not None:
+                row[c_dom] = dom
+            if c_url is not None:
+                row[c_url] = f"https://{dom}/"
+            if c_sim is not None:
+                row[c_sim] = "Alto"
+            if c_fonte is not None:
+                row[c_fonte] = "Usuario"
+            if c_nome is not None:
+                row[c_nome] = name
+            # Se nao achou colunas, append simples
+            if c_dom is None and c_nome is None:
+                ws.append([name, dom, "Alto", "Usuario", f"https://{dom}/"])
+            else:
+                ws.append(row)
+            existing_doms.add(dom.lower())
+            added.append({
+                "name": name if " " in name else _domain_label(dom),
+                "domain": dom,
+                "similaridade": "Alto",
+                "preferred": True,
+                "is_client": False,
+                "fonte": "Usuario",
+                "url": f"https://{dom}/",
+                "perfil": "n/d",
+                "nicho": "",
+            })
+        wb.save(path)
+        wb.close()
+    else:
+        for name in clean:
+            raw = name.lower().replace("https://", "").replace("http://", "").replace("www.", "")
+            if "." in raw.split()[0] and " " not in raw.split("/")[0]:
+                dom = raw.split("/")[0].strip()
+            else:
+                dom = f"{_slug(name)}.com.br"
+            added.append({
+                "name": name if " " in name else _domain_label(dom),
+                "domain": dom,
+                "similaridade": "Alto",
+                "preferred": True,
+                "is_client": False,
+                "fonte": "Usuario",
+                "url": f"https://{dom}/",
+                "perfil": "n/d",
+                "nicho": "",
+            })
+    return added

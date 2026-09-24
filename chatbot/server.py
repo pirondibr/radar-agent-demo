@@ -60,7 +60,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.5.0"
 
 try:
     usage_db.init_db()
@@ -97,6 +97,9 @@ class Job:
     steps: dict = field(default_factory=dict)
     error: Optional[str] = None
     report: Optional[dict] = None
+    awaiting: str = ""
+    gate: threading.Event = field(default_factory=threading.Event)
+    gate_payload: dict = field(default_factory=dict)
 
 
 jobs: dict[str, Job] = {}
@@ -150,6 +153,17 @@ def _worker(job: Job) -> None:
         def _set_step(step_id: str, state: str, detail: str = "") -> None:
             set_step(job, step_id, state, detail)
 
+        def _wait_fn(kind: str, timeout: float = 600) -> dict:
+            job.awaiting = kind
+            job.gate_payload = {}
+            job.gate.clear()
+            emit(job, "status", awaiting=kind)
+            ok = job.gate.wait(timeout=timeout)
+            job.awaiting = ""
+            if not ok:
+                return {"skip": True, "timeout": True}
+            return dict(job.gate_payload or {})
+
         kind = getattr(job.parsed, "kind", "") or ""
         if kind == "extras":
             report = run_extras_pipeline(
@@ -162,7 +176,9 @@ def _worker(job: Job) -> None:
                 run_id=job.job_id,
             )
         else:
-            report = run_pipeline(job.parsed, _emit, _set_step, run_id=job.job_id)
+            report = run_pipeline(
+                job.parsed, _emit, _set_step, run_id=job.job_id, wait_fn=_wait_fn
+            )
         job.report = report
         job.status = "done"
         try:
@@ -658,6 +674,37 @@ def job_events(job_id: str):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.post("/api/jobs/<job_id>/continue")
+def continue_job(job_id: str):
+    """Retoma pipeline pausada (ex.: adicionar concorrentes apos briefing)."""
+    job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job nao encontrado"}), 404
+    data = request.get_json(silent=True) or {}
+    kind = (data.get("kind") or job.awaiting or "").strip()
+    if job.awaiting and kind and kind != job.awaiting:
+        return jsonify({"error": f"Job aguarda '{job.awaiting}', nao '{kind}'"}), 409
+    if not job.awaiting:
+        # Idempotente: ja retomou
+        return jsonify({"ok": True, "already": True})
+
+    if kind == "extra_competitors":
+        raw = data.get("competitors")
+        comps: list[str] = []
+        if isinstance(raw, list):
+            comps = [str(x).strip() for x in raw if str(x).strip()]
+        elif isinstance(raw, str):
+            from parse_input import _split_competitors
+            comps = _split_competitors(raw)
+        comps = comps[:3]
+        skip = bool(data.get("skip")) or not comps
+        job.gate_payload = {"competitors": comps, "skip": skip}
+    else:
+        job.gate_payload = dict(data)
+    job.gate.set()
+    return jsonify({"ok": True, "kind": kind, "payload": job.gate_payload})
 
 
 @app.get("/api/jobs/<job_id>")

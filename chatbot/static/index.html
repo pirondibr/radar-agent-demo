@@ -145,7 +145,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 </head>
 <body>
 <div class="top">
- <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar da Concorrência</div><span class="top-version" id="appVersion">v1.4.1</span></div>
+ <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar da Concorrência</div><span class="top-version" id="appVersion">v1.5.0</span></div>
  <div class="top-sep"></div>
  <div class="top-status" id="topStatus">Pronto</div>
  <div class="top-right"><div class="top-meta" id="topMeta">MVP Ads + SEO + Marca</div></div>
@@ -162,7 +162,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.5.0';
 const BOT_NAME = 'Radar da Concorrência';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -174,6 +174,7 @@ if (appVersionEl) appVersionEl.textContent = 'v' + APP_VERSION;
 document.title = BOT_NAME + ' v' + APP_VERSION + ' | Consultor de Marketing';
 
 let busy = false;
+let awaitingExtraJobId = null;
 let stepDefs = [];
 let analysisCtx = { company: '', slug: '', job_id: '', demo: false };
 
@@ -189,13 +190,16 @@ function reveal(el) {
  setTimeout(() => { b.style.width = b.dataset.w + '%'; }, 280);
  });
 }
-function append(html) {
+function append(html, scrollBlock) {
  const wrap = document.createElement('div');
  wrap.innerHTML = html;
  const node = wrap.firstElementChild;
  thread.appendChild(node);
  reveal(node);
- node.scrollIntoView({ behavior: 'smooth', block: 'end' });
+ const block = scrollBlock === undefined ? 'start' : scrollBlock;
+ if (block && block !== 'none') {
+  node.scrollIntoView({ behavior: 'smooth', block: block });
+ }
  return node;
 }
 
@@ -601,9 +605,9 @@ function renderProFinale() {
  </div>
  <div class="channel-chips">
  <span class="channel-chip meta">Meta Ads</span>
- <span class="channel-chip li">LinkedIn</span>
  <span class="channel-chip ig">Instagram</span>
  <span class="channel-chip yt">YouTube</span>
+ <span class="channel-chip li">LinkedIn</span>
  </div>
  <div class="finale-cta">
  <div class="pro-cta-text" style="max-width:380px">
@@ -711,6 +715,37 @@ async function startExtrasCheckout(root, btn) {
  }
 }
 
+
+function renderMetaAdsSection(meta, client) {
+ meta = meta || {};
+ const rows = (meta.rows || []).map((r, i) => `
+ <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}<td class="dt-name">${esc(r.name)}</td><td class="dt-val">${esc(r.ads_fmt || r.value_fmt || '0')}</td><td class="dt-val">${esc(r.investimento_fmt || 'R$ 0')}</td><td class="dt-val">${esc(r.pct_fmt || '')}</td></tr>`).join('');
+ const rank = meta.client_rank ? `, voce em ${meta.client_rank}º` : '';
+ const node = append(`
+ <div class="q-block reveal" data-section="meta">
+ <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="q-bubble">Canais extra 1/4: Quem anuncia mais no Meta?</div>
+ <div class="answer-card ac-gads">
+ <div class="ac-head"><div class="ac-agent ag-gads">M</div><div class="ac-label lb-gads">Meta Ads Ranking</div></div>
+ <div class="hero-num"><div class="hero-val" style="color:var(--violet)">${esc(meta.total_invest_fmt || 'R$ 0')}</div><div class="hero-sub">investidos/mes estimado, ${esc(meta.total_fmt || '0')} anuncios${esc(rank)}</div></div>
+ <div class="ac-text">Estimativa: R$ 500 por anúncio ativo (Meta Ads Library).</div>
+ <div style="overflow-x:auto"><table class="dtable">
+ <thead><tr><th>#</th><th>Empresa</th><th>Anuncios</th><th style="text-align:right">Investimento</th><th style="text-align:right">% do Total</th></tr></thead>
+ <tbody>${rows || '<tr><td colspan="5" class="dt-name">Sem dados de Meta Ads</td></tr>'}</tbody>
+ </table></div>
+ ${analysisBlocks('meta', meta.analysis_title, meta.insight, meta.pro_hook)}
+ </div>
+ </div>`);
+ renderProTeaser({
+  channel: 'meta', questions: PRO_QUESTIONS_META,
+  bubble: 'Quer criativos Meta? Na <strong>versão Pro</strong> comparamos anúncios reais.',
+  label: 'Radar Pro Meta Ads profundo',
+  blurb: 'Exemplos de perguntas desbloqueadas na versão paga:',
+  ctaText: 'Desbloqueie a análise Pro de <strong>Meta Ads</strong>.',
+ });
+ return node;
+}
+
 function renderCountChannel(section, title, colorVar, agentLetter, labelCls, agentCls, cardCls, stageLabel, proOpts) {
  const data = section || {};
  const rows = (data.rows || []).map((r, i) => `
@@ -783,14 +818,14 @@ function renderAdsSection(gads, client) {
  const gRows = (gads.rows || []).map((r, i) => `
  <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}<td class="dt-name">${esc(r.name)}</td><td class="dt-val">${esc(r.ads_fmt)}</td><td class="dt-val">${esc(r.investimento_fmt)}</td><td class="dt-val">${esc(r.pct_fmt)}</td></tr>`).join('');
  const adsRank = gads.client_rank ? `, voce em ${gads.client_rank}º` : '';
- append(`
- <div class="q-block reveal">
+ const adsNode = append(`
+ <div class="q-block reveal" data-section="ads">
  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
  <div class="q-bubble">Etapa 2/4: Quem esta investindo mais em Google Ads?</div>
  <div class="answer-card ac-gads">
  <div class="ac-head"><div class="ac-agent ag-gads">G</div><div class="ac-label lb-gads">Google Ads Ranking</div></div>
  <div class="hero-num"><div class="hero-val" style="color:var(--amber)">${esc(gads.total_invest_fmt || 'R$ 0')}</div><div class="hero-sub">investidos/mes estimado, ${esc(gads.total_ads_fmt || '0')} anuncios${esc(adsRank)}</div></div>
- <div class="ac-text">Cliente e concorrentes no mesmo ranking. Estimativa: R$ 1.500 por anuncio ativo (Transparency).</div>
+ <div class="ac-text">Dados de anúncios fornecidos pelo Google Transparency.</div>
  <div style="overflow-x:auto"><table class="dtable">
  <thead><tr><th>#</th><th>Empresa</th><th>Anuncios</th><th style="text-align:right">Investimento</th><th style="text-align:right">% do Total</th></tr></thead>
  <tbody>${gRows || '<tr><td colspan="5" class="dt-name">Sem dados de Google Ads</td></tr>'}</tbody>
@@ -824,9 +859,10 @@ function renderSeoSection(seo, client) {
  <div class="answer-card ac-seo">
  <div class="ac-head"><div class="ac-agent ag-seo">S</div><div class="ac-label lb-seo">SEO Organico Ranking</div></div>
  <div class="hero-num"><div class="hero-val" style="color:var(--blue)">${esc(seo.total_traffic_fmt || ' ')}</div><div class="hero-sub">visitas organicas/mes, ${esc(seo.leader || ' ')} lidera${esc(seoRank)}</div></div>
- <div class="ac-text">Trafego organico (Semrush) com <strong>${esc(client || '')}</strong> incluso para comparar crescimento e participacao.</div>
+ <div class="ac-text">Dados de visitas estimados pela empresa Semrush.</div>
+ <div class="hint">*Crescimento: comparativo com até 3 anos (ou o período mais longo disponível: 2a / 1a).</div>
  <div style="overflow-x:auto"><table class="dtable">
- <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Trafego</th><th>Participacao</th><th style="text-align:right">Crescimento</th></tr></thead>
+ <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Trafego</th><th>Participacao</th><th style="text-align:right">Crescimento*</th></tr></thead>
  <tbody>${sRows || '<tr><td colspan="5" class="dt-name">Sem dados de SEO</td></tr>'}</tbody>
  </table></div>
  ${analysisBlocks('seo', seo.analysis_title, seo.insight, seo.pro_hook)}
@@ -856,11 +892,12 @@ function renderBrandSection(brand, client) {
  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
  <div class="q-bubble">Etapa 4/4: Qual e a marca mais reconhecida do mercado?</div>
  <div class="answer-card ac-brand">
- <div class="ac-head"><div class="ac-agent ag-brand">B</div><div class="ac-label lb-brand">Brand Search Ranking</div></div>
- <div class="hero-num"><div class="hero-val" style="color:var(--teal)">${esc(brand.total_traffic_fmt || ' ')}</div><div class="hero-sub">buscas de marca/mes, ${esc(brand.leader || ' ')} lidera${esc(brandRank)}</div></div>
- <div class="ac-text">Volume de busca pela marca (Semrush) termometro de awareness. <strong>${esc(client || '')}</strong> incluso no ranking.</div>
+ <div class="ac-head"><div class="ac-agent ag-brand">B</div><div class="ac-label lb-brand">Popularidade de sua marca</div></div>
+ <div class="hero-num"><div class="hero-val" style="color:var(--teal)">${esc(brand.total_traffic_fmt || ' ')}</div> <div class="hero-sub">buscas pelo nome da marca no Google, ${esc(brand.leader || ' ')} lidera${esc(brandRank)}</div></div>
+ <div class="ac-text">Dados de pesquisa pelo nome da sua empresa no Google.</div>
+ <div class="hint">*Crescimento: comparativo com até 3 anos (ou o período mais longo disponível: 2a / 1a).</div>
  <div style="overflow-x:auto"><table class="dtable">
- <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Buscas/mes</th><th>Participacao</th><th style="text-align:right">Crescimento</th></tr></thead>
+ <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Buscas/mes</th><th>Participacao</th><th style="text-align:right">Crescimento*</th></tr></thead>
  <tbody>${bRows || '<tr><td colspan="5" class="dt-name">Sem dados de marca</td></tr>'}</tbody>
  </table></div>
  ${analysisBlocks('brand', brand.analysis_title, brand.insight, brand.pro_hook)}
@@ -897,7 +934,8 @@ function handlePartial(msg) {
  else if (section === 'google_ads') renderAdsSection(data, client);
  else if (section === 'seo') renderSeoSection(data, client);
  else if (section === 'brand') renderBrandSection(data, client);
- else if (section === 'meta') renderCountChannel(
+ else if (section === 'meta' && data && data.show_investment) renderMetaAdsSection(data, client);
+else if (section === 'meta') renderCountChannel(
   data, 'Meta Ads Ranking', 'var(--violet)', 'M', 'lb-finale', 'ag-finale', 'ac-finale',
   'Canais extra 1/4: Quem anuncia mais no Meta?',
   {
@@ -910,7 +948,7 @@ function handlePartial(msg) {
  );
  else if (section === 'linkedin') renderCountChannel(
   data, 'LinkedIn Ads Ranking', 'var(--blue)', 'L', 'lb-seo', 'ag-seo', 'ac-seo',
-  'Canais extra 2/4: Quem anuncia mais no LinkedIn?',
+  'Canais extra 4/4: Quem anuncia mais no LinkedIn?',
   {
    channel: 'linkedin', questions: PRO_QUESTIONS_LINKEDIN,
    bubble: 'Quer aprofundar <strong>LinkedIn Ads</strong>? Na versão Pro abrimos mensagens e estrutura.',
@@ -921,7 +959,7 @@ function handlePartial(msg) {
  );
  else if (section === 'instagram') renderCountChannel(
   data, 'Instagram Ranking', 'var(--pink)', 'I', 'lb-finale', 'ag-finale', 'ac-finale',
-  'Canais extra 3/4: Quem cresce mais no Instagram?',
+  'Canais extra 2/4: Quem cresce mais no Instagram?',
   {
    channel: 'instagram', questions: PRO_QUESTIONS_IG,
    bubble: 'Quer entender o <strong>crescimento no Instagram</strong>? Na versão Pro aprofundamos conteúdo.',
@@ -932,7 +970,7 @@ function handlePartial(msg) {
  );
  else if (section === 'youtube') renderCountChannel(
   data, 'YouTube Ranking', 'var(--red)', 'Y', 'lb-gads', 'ag-gads', 'ac-gads',
-  'Canais extra 4/4: Quem lidera no YouTube?',
+  'Canais extra 3/4: Quem lidera no YouTube?',
   {
    channel: 'youtube', questions: PRO_QUESTIONS_YT,
    bubble: 'Quer autoridade em vídeo? Na <strong>versão Pro</strong> avaliamos YouTube a fundo.',
@@ -1023,6 +1061,59 @@ async function startExtrasJob() {
  }
 }
 
+
+function showExtraCompetitorsPrompt(jobId, msg) {
+ const text = (msg && msg.message) || 'Tem algum concorrente que não apareceu na lista? Informe e vamos adicionar. (Limite de 3 empresas.)';
+ const node = append(`
+ <div class="q-block reveal" data-extra-comps>
+  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+  <div class="q-bubble">${mdLite(text)}</div>
+  <div class="pay-form" style="display:flex">
+   <input type="text" data-extra-input placeholder="Ex: empresa1.com.br, concorrente2, marca3" />
+   <div class="pay-choice" style="margin-top:8px">
+    <button type="button" data-extra-send>Adicionar e continuar</button>
+    <button type="button" data-extra-skip>Continuar sem adicionar</button>
+   </div>
+   <div class="hint">Até 3 empresas, separadas por vírgula.</div>
+  </div>
+ </div>`);
+ const inp = node.querySelector('[data-extra-input]');
+ const send = node.querySelector('[data-extra-send]');
+ const skip = node.querySelector('[data-extra-skip]');
+ async function resume(payload) {
+  send.disabled = true; skip.disabled = true;
+  setBusy(true);
+  try {
+   await fetch('/api/jobs/' + encodeURIComponent(jobId) + '/continue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+   });
+   node.querySelector('.pay-form').style.display = 'none';
+  } catch (e) {
+   addBotBubble('Não consegui retomar: ' + e.message);
+   send.disabled = false; skip.disabled = false;
+   setBusy(false);
+  }
+ }
+ send.addEventListener('click', () => {
+  const raw = (inp.value || '').trim();
+  addUserBubble(raw || '(nenhum)');
+  const parts = raw.split(/[,;\/\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3);
+  awaitingExtraJobId = null;
+  resume({ kind: 'extra_competitors', competitors: parts, skip: parts.length === 0 });
+ });
+ skip.addEventListener('click', () => {
+  addUserBubble('Continuar sem adicionar');
+  awaitingExtraJobId = null;
+  resume({ kind: 'extra_competitors', competitors: [], skip: true });
+ });
+ inp.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') send.click();
+ });
+ inp.focus();
+}
+
 function listenJobEvents(jobId, isExtras) {
  let gotPartial = false;
  const es = new EventSource(`/api/jobs/${jobId}/events`);
@@ -1047,9 +1138,18 @@ function listenJobEvents(jobId, isExtras) {
    updateProgressUI(msg);
    if (msg.progress_label) topStatus.textContent = msg.progress_label;
   }
+  if (msg.type === 'await_input') {
+   setBusy(false);
+   awaitingExtraJobId = jobId;
+   showExtraCompetitorsPrompt(jobId, msg);
+  }
   if (msg.type === 'partial') {
    gotPartial = true;
    handlePartial(msg);
+   if (msg.section === 'google_ads') {
+    const el = document.querySelector('[data-section="ads"]');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+   }
   }
   if (msg.type === 'complete') {
    updateSteps(msg.steps || {});

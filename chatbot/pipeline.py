@@ -11,6 +11,7 @@ from typing import Callable, Optional
 
 from parse_input import ParsedInput, normalize_url, slugify_client
 from report_builder import (
+    append_user_competitors,
     build_early_briefing_competitors,
     build_report_from_xlsx,
 )
@@ -84,7 +85,7 @@ STEP_DEFS = [
 
 TOTAL_STEPS = len(STEP_DEFS)
 
-# Canais extra (apos free): Meta, LinkedIn, Instagram, YouTube — sem TikTok
+# Canais extra (apos free): Meta → Instagram → YouTube → LinkedIn (sem TikTok)
 EXTRA_STEP_DEFS = [
     {
         "id": "meta",
@@ -97,21 +98,11 @@ EXTRA_STEP_DEFS = [
         "eta_cache": 10,
     },
     {
-        "id": "linkedin",
-        "label": "LinkedIn Ads",
-        "tag": "2/4",
-        "tag_cls": "blue",
-        "index": 2,
-        "eta_live": 180,
-        "eta_demo": 12,
-        "eta_cache": 10,
-    },
-    {
         "id": "instagram",
         "label": "Instagram",
-        "tag": "3/4",
+        "tag": "2/4",
         "tag_cls": "green",
-        "index": 3,
+        "index": 2,
         "eta_live": 120,
         "eta_demo": 12,
         "eta_cache": 10,
@@ -119,12 +110,22 @@ EXTRA_STEP_DEFS = [
     {
         "id": "youtube",
         "label": "YouTube",
-        "tag": "4/4",
+        "tag": "3/4",
         "tag_cls": "green",
-        "index": 4,
+        "index": 3,
         "eta_live": 30,
         "eta_demo": 10,
         "eta_cache": 9,
+    },
+    {
+        "id": "linkedin",
+        "label": "LinkedIn Ads",
+        "tag": "4/4",
+        "tag_cls": "blue",
+        "index": 4,
+        "eta_live": 180,
+        "eta_demo": 12,
+        "eta_cache": 10,
     },
 ]
 
@@ -277,6 +278,39 @@ def _emit_progress(
     )
 
 
+def _wait_extra_competitors(
+    emit: EmitFn,
+    wait_fn: Optional[Callable[[str, float], dict]],
+    *,
+    timeout: float = 600,
+) -> list[str]:
+    """Pede ate 3 concorrentes extras ao usuario; wait_fn bloqueia ate /continue."""
+    emit(
+        "await_input",
+        kind="extra_competitors",
+        message=(
+            "Tem algum concorrente que não apareceu na lista? "
+            "Informe e vamos adicionar. (Limite de 3 empresas.)"
+        ),
+        max_items=3,
+        skip_label="Continuar sem adicionar",
+    )
+    if not wait_fn:
+        return []
+    payload = wait_fn("extra_competitors", timeout) or {}
+    if payload.get("skip"):
+        return []
+    comps = payload.get("competitors") or []
+    out: list[str] = []
+    for c in comps:
+        s = str(c or "").strip()
+        if s and s not in out:
+            out.append(s)
+        if len(out) >= 3:
+            break
+    return out
+
+
 def _record_competitors_step(run_id: Optional[str], early: dict, step_id: str = "briefing_concorrentes") -> None:
     if not run_id or not usage_db:
         return
@@ -418,6 +452,9 @@ def _reveal_from_report(
     set_step: EmitFn,
     mode: str,
     pauses: Optional[dict[str, float]] = None,
+    wait_fn: Optional[Callable[[str, float], dict]] = None,
+    parsed: Optional[ParsedInput] = None,
+    run_id: Optional[str] = None,
 ) -> dict:
     """Revela as 4 etapas em sequencia a partir de um report ja montado."""
     pauses = pauses or REVEAL_PAUSE
@@ -434,6 +471,23 @@ def _reveal_from_report(
         emit, set_step, "briefing_concorrentes", "done",
         "Briefing e concorrentes prontos", mode,
     )
+
+    extra_names = _wait_extra_competitors(emit, wait_fn)
+    if extra_names and parsed is not None:
+        for n in extra_names:
+            if n not in parsed.competitors:
+                parsed.competitors.append(n)
+        slug = parsed.slug or slugify_client(parsed.url or parsed.company or client)
+        append_user_competitors(find_concorrentes_xlsx(slug), extra_names, client_name=client)
+        # Reconstroi report com preferred atualizado se houver metricas
+        xlsx = find_metricas_xlsx(slug)
+        if xlsx and xlsx.exists():
+            report = build_report_from_xlsx(
+                xlsx,
+                client_name=client,
+                preferred_competitors=parsed.competitors,
+            )
+            _emit_section(emit, "briefing_concorrentes", report, client)
 
     # 2 Google Ads
     _emit_progress(emit, set_step, "google_ads", "running", "Ranking Google Ads...", mode)
@@ -461,6 +515,7 @@ def run_demo_pipeline(
     emit: EmitFn,
     set_step: EmitFn,
     run_id: Optional[str] = None,
+    wait_fn: Optional[Callable[[str, float], dict]] = None,
 ) -> dict:
     slug = parsed.slug or "chatguru"
     xlsx = find_metricas_xlsx(slug) if slug != "chatguru" else DEMO_XLSX
@@ -487,7 +542,9 @@ def run_demo_pipeline(
     )
     _record_competitors_step(run_id, report)
     _record_xlsx_artifacts(run_id, slug, "briefing_concorrentes")
-    return _reveal_from_report(report, emit, set_step, mode)
+    return _reveal_from_report(
+        report, emit, set_step, mode, wait_fn=wait_fn, parsed=parsed, run_id=run_id
+    )
 
 
 def run_live_pipeline(
@@ -495,6 +552,7 @@ def run_live_pipeline(
     emit: EmitFn,
     set_step: EmitFn,
     run_id: Optional[str] = None,
+    wait_fn: Optional[Callable[[str, float], dict]] = None,
 ) -> dict:
     import os
 
@@ -542,7 +600,9 @@ def run_live_pipeline(
         )
         _record_competitors_step(run_id, report)
         _record_xlsx_artifacts(run_id, slug, "briefing_concorrentes")
-        return _reveal_from_report(report, emit, set_step, mode)
+        return _reveal_from_report(
+            report, emit, set_step, mode, wait_fn=wait_fn, parsed=parsed, run_id=run_id
+        )
 
     mode = "live"
     first_eta = _step_eta_sec("briefing_concorrentes", mode)
@@ -567,7 +627,7 @@ def run_live_pipeline(
         raise FileNotFoundError(SCRIPT_CONCORRENTES)
     _emit_progress(
         emit, set_step, "briefing_concorrentes", "running",
-        "SEO + LLM: mapeando concorrentes nacionais...", mode,
+        "Concorrentes: pesquisando e filtrando seus concorrentes.", mode,
     )
     _run_script(
         [sys.executable, str(SCRIPT_CONCORRENTES), slug, "nacional"],
@@ -591,6 +651,35 @@ def run_live_pipeline(
         + (f" ({early.get('display_tier')})" if early.get("display_tier") else ""),
         mode,
     )
+
+    # Pausa: usuario pode adicionar ate 3 concorrentes antes do Ads
+    extra_names = _wait_extra_competitors(emit, wait_fn)
+    if extra_names:
+        emit("log", line=f"Adicionando concorrentes do usuario: {', '.join(extra_names)}")
+        for n in extra_names:
+            if n not in parsed.competitors:
+                parsed.competitors.append(n)
+        added = append_user_competitors(
+            find_concorrentes_xlsx(slug),
+            extra_names,
+            client_name=client_name,
+        )
+        early = build_early_briefing_competitors(
+            find_briefing_xlsx(slug),
+            find_concorrentes_xlsx(slug),
+            client_name=client_name,
+            preferred_competitors=parsed.competitors,
+            fallback_url=url,
+        )
+        # Garante preferred na lista UI
+        if added:
+            existing_doms = {str(c.get("domain") or "").lower() for c in (early.get("competitors") or [])}
+            for a in added:
+                if a.get("domain", "").lower() not in existing_doms:
+                    early.setdefault("competitors", []).append(a)
+            early["competitors_count"] = len([c for c in early["competitors"] if not c.get("is_client")])
+        _emit_section(emit, "briefing_concorrentes", early, client_name)
+        emit("log", line=f"{len(extra_names)} concorrente(s) adicionados ao radar.")
 
     # --- Etapa 2/4: somente Google Ads ---
     _emit_progress(
@@ -650,10 +739,11 @@ def run_pipeline(
     emit: EmitFn,
     set_step: EmitFn,
     run_id: Optional[str] = None,
+    wait_fn: Optional[Callable[[str, float], dict]] = None,
 ) -> dict:
     if parsed.demo:
-        return run_demo_pipeline(parsed, emit, set_step, run_id=run_id)
-    return run_live_pipeline(parsed, emit, set_step, run_id=run_id)
+        return run_demo_pipeline(parsed, emit, set_step, run_id=run_id, wait_fn=wait_fn)
+    return run_live_pipeline(parsed, emit, set_step, run_id=run_id, wait_fn=wait_fn)
 
 
 def run_extras_pipeline(
@@ -699,9 +789,9 @@ def run_extras_pipeline(
         emit("log", line=f"[EXTRAS/DEMO] Revelando canais extra de {xlsx.name}")
         for sid, label in (
             ("meta", "Meta Ads"),
-            ("linkedin", "LinkedIn Ads"),
             ("instagram", "Instagram"),
             ("youtube", "YouTube"),
+            ("linkedin", "LinkedIn Ads"),
         ):
             _emit_progress(
                 emit, set_step, sid, "running", f"Ranking {label}...", mode,
@@ -718,7 +808,7 @@ def run_extras_pipeline(
     if not SCRIPT_META.exists() or not SCRIPT_LINKEDIN.exists() or not SCRIPT_SOCIAL.exists():
         raise FileNotFoundError("Scripts de canais extra (5d/5e/5f) nao encontrados.")
 
-    # Meta
+    # Meta → Instagram → YouTube → LinkedIn
     _emit_progress(
         emit, set_step, "meta", "running", "Coletando Meta Ads Library...", mode,
         defs=defs, total=total,
@@ -730,17 +820,6 @@ def run_extras_pipeline(
     report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred_competitors)
     _emit_section(emit, "meta", report, client_name)
     _emit_progress(emit, set_step, "meta", "done", "Meta Ads pronto", mode, defs=defs, total=total)
-
-    # LinkedIn
-    _emit_progress(
-        emit, set_step, "linkedin", "running", "Coletando LinkedIn Ads...", mode,
-        defs=defs, total=total,
-    )
-    _run_script([sys.executable, str(SCRIPT_LINKEDIN), slug], FINAL_DIR, on_log)
-    xlsx = find_metricas_xlsx(slug) or xlsx
-    report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred_competitors)
-    _emit_section(emit, "linkedin", report, client_name)
-    _emit_progress(emit, set_step, "linkedin", "done", "LinkedIn Ads pronto", mode, defs=defs, total=total)
 
     # Social = IG + YT (um script, duas revelacoes)
     _emit_progress(
@@ -760,5 +839,16 @@ def run_extras_pipeline(
     time.sleep(REVEAL_PAUSE.get("youtube", 1.0))
     _emit_section(emit, "youtube", report, client_name)
     _emit_progress(emit, set_step, "youtube", "done", "YouTube pronto", mode, defs=defs, total=total)
+
+    # LinkedIn por ultimo
+    _emit_progress(
+        emit, set_step, "linkedin", "running", "Coletando LinkedIn Ads...", mode,
+        defs=defs, total=total,
+    )
+    _run_script([sys.executable, str(SCRIPT_LINKEDIN), slug], FINAL_DIR, on_log)
+    xlsx = find_metricas_xlsx(slug) or xlsx
+    report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred_competitors)
+    _emit_section(emit, "linkedin", report, client_name)
+    _emit_progress(emit, set_step, "linkedin", "done", "LinkedIn Ads pronto", mode, defs=defs, total=total)
 
     return report
