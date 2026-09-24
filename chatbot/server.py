@@ -60,7 +60,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 
 try:
     usage_db.init_db()
@@ -417,10 +417,9 @@ def mercadopago_webhook():
 
 @app.get("/pay/return")
 def pay_return():
-    """Volta do Checkout Pro para o chat com order_id na query."""
+    """Volta do Checkout Pro: avisa a aba do chat e tenta fechar o popup."""
     status = (request.args.get("status") or "").strip()
     order_id = (request.args.get("order_id") or "").strip()
-    # Se MP mandar collection_id / payment_id, tenta sincronizar
     payment_id = (
         request.args.get("payment_id")
         or request.args.get("collection_id")
@@ -431,25 +430,68 @@ def pay_return():
             apply_payment_to_order(fetch_payment(payment_id))
         except Exception as e:
             print(f"[MP-RETURN] sync erro: {e}")
-    # Pagina minima que fecha o popup / redireciona ao app
+
+    if status == "success":
+        title = "Pagamento aprovado"
+        body = (
+            "Tudo certo. Pode fechar esta janela — o chat do Radar já deve "
+            "pedir seu e-mail ou WhatsApp na aba que ficou aberta."
+        )
+    elif status == "pending":
+        title = "Pagamento pendente"
+        body = "Se pagou via PIX, aguarde a confirmação e volte à aba do chat."
+    else:
+        title = "Pagamento não concluído"
+        body = "Feche esta janela e tente de novo pelo chat, se quiser."
+
+    # Escape for JS string literals
+    safe_status = status.replace("\\", "\\\\").replace("'", "\\'")
+    safe_order = order_id.replace("\\", "\\\\").replace("'", "\\'")
+
     html = f"""<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Pagamento Radar Pro</title>
-<style>body{{font-family:system-ui,sans-serif;background:#fafafa;color:#111;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}}
-.card{{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:28px 24px;max-width:420px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.06)}}
-h1{{font-size:18px;margin:0 0 8px}}p{{color:#555;font-size:14px;line-height:1.5}}
-a{{display:inline-block;margin-top:14px;padding:10px 16px;border-radius:10px;background:#4f46e5;color:#fff;text-decoration:none;font-weight:700}}</style>
+<title>{title}</title>
+<style>
+body{{font-family:system-ui,sans-serif;background:#fafafa;color:#111;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}}
+.card{{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:28px 24px;max-width:440px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.06)}}
+h1{{font-size:18px;margin:0 0 8px}}p{{color:#555;font-size:14px;line-height:1.5;margin:0 0 8px}}
+button{{display:inline-block;margin-top:12px;padding:10px 16px;border-radius:10px;border:0;background:#4f46e5;color:#fff;font-weight:700;font-size:14px;cursor:pointer}}
+.hint{{font-size:12px;color:#8c8ca0;margin-top:14px}}
+</style>
 </head><body><div class="card">
-<h1>{"Pagamento aprovado" if status=="success" else ("Pagamento pendente" if status=="pending" else "Pagamento nao concluido")}</h1>
-<p>{"Pagamento recebido. Volte ao chat para informar o contato e receber a analise." if status=="success" else "Se pagou via PIX, aguarde a confirmacao e volte ao chat."}</p>
-<a href="/?paid={status}&order_id={order_id}">Voltar ao Radar da Concorrência</a>
+<h1>{title}</h1>
+<p>{body}</p>
+<button type="button" id="backBtn">Voltar ao chat (fechar esta janela)</button>
+<p class="hint" id="hint">Se o botão não fechar, volte manualmente à aba do Radar que já estava aberta — não abra o site de novo.</p>
 </div>
 <script>
-try {{
-  if (window.opener) {{
-    window.opener.postMessage({{ type: 'mp_return', status: '{status}', order_id: '{order_id}' }}, '*');
+(function () {{
+  var status = '{safe_status}';
+  var orderId = '{safe_order}';
+  function notifyOpener() {{
+    try {{
+      if (window.opener && !window.opener.closed) {{
+        window.opener.postMessage({{ type: 'mp_return', status: status, order_id: orderId }}, '*');
+        try {{ window.opener.focus(); }} catch (e) {{}}
+        return true;
+      }}
+    }} catch (e) {{}}
+    return false;
   }}
-}} catch (e) {{}}
+  function goBack() {{
+    notifyOpener();
+    // Tenta fechar o popup do Mercado Pago
+    setTimeout(function () {{
+      try {{ window.close(); }} catch (e) {{}}
+      document.getElementById('hint').textContent =
+        'Não foi possível fechar automaticamente. Feche esta aba e continue no chat que já estava aberto.';
+    }}, 120);
+  }}
+  document.getElementById('backBtn').addEventListener('click', goBack);
+  // Auto: avisa o chat e tenta fechar em ~1s
+  notifyOpener();
+  setTimeout(goBack, 900);
+}})();
 </script>
 </body></html>"""
     return Response(html, mimetype="text/html")

@@ -145,7 +145,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 </head>
 <body>
 <div class="top">
- <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar da Concorrência</div><span class="top-version" id="appVersion">v1.4.0</span></div>
+ <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar da Concorrência</div><span class="top-version" id="appVersion">v1.4.1</span></div>
  <div class="top-sep"></div>
  <div class="top-status" id="topStatus">Pronto</div>
  <div class="top-right"><div class="top-meta" id="topMeta">MVP Ads + SEO + Marca</div></div>
@@ -162,7 +162,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const BOT_NAME = 'Radar da Concorrência';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -377,6 +377,7 @@ function startPaidCapture(channel) {
 
  function showContactCapture() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  try { sessionStorage.removeItem('radar_mp_pending'); } catch (e) {}
   addBotBubble(`Obrigado pelo pagamento! Sua análise Pro de **${channelLabel}** vai ser preparada e enviada em até 24h. Qual contato você prefere: e-mail ou WhatsApp?`);
   form.hidden = false;
   btnStart.hidden = true;
@@ -424,15 +425,21 @@ function startPaidCapture(channel) {
     return;
    }
    orderId = data.order_id;
+   try {
+    sessionStorage.setItem('radar_mp_pending', JSON.stringify({
+     order_id: orderId, channel: channel, at: Date.now()
+    }));
+   } catch (e) {}
    const url = data.init_point || data.sandbox_init_point;
    if (!url) {
     hint.textContent = 'Checkout sem URL de pagamento.';
     btnStart.disabled = false;
     return;
    }
-   window.open(url, '_blank', 'noopener,noreferrer');
+   // Sem noopener: precisa de window.opener para a pagina /pay/return avisar o chat
+   window.open(url, 'radar_mp_checkout');
    btnCheck.hidden = false;
-   hint.textContent = 'Janela do Mercado Pago aberta. Conclua PIX ou cartão e volte aqui.';
+   hint.textContent = 'Janela do Mercado Pago aberta. Conclua PIX ou cartão — esta aba do chat continua aqui.';
    pollTimer = setInterval(() => { checkPaid(); }, 4000);
   } catch (e) {
    hint.textContent = e.message;
@@ -669,14 +676,19 @@ async function startExtrasCheckout(root, btn) {
    return;
   }
   orderId = data.order_id;
+  try {
+   sessionStorage.setItem('radar_mp_pending', JSON.stringify({
+    order_id: orderId, product: 'extras_pack', at: Date.now()
+   }));
+  } catch (e) {}
   const url = data.init_point || data.sandbox_init_point;
   if (!url) {
    if (hint) hint.textContent = 'Checkout sem URL de pagamento.';
    if (btn) btn.disabled = false;
    return;
   }
-  window.open(url, '_blank', 'noopener,noreferrer');
-  if (hint) hint.textContent = 'Janela do Mercado Pago aberta (PIX ou cartão). Depois clique em verificar se não avançar sozinho.';
+  window.open(url, 'radar_mp_checkout');
+  if (hint) hint.textContent = 'Janela do Mercado Pago aberta (PIX ou cartão). Esta aba do chat continua aqui — depois clique em verificar se não avançar sozinho.';
   if (btn) {
    btn.disabled = false;
    btn.dataset.mode = 'verify';
