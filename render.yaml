@@ -35,4 +35,4 @@ services:
       - key: PUBLIC_BASE_URL
         value: "https://agente.radardaconcorrencia.com.br"
       - key: PRO_PRICE_BRL
-        value: "5"
+        value: "99"
