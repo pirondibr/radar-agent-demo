@@ -22,7 +22,13 @@ from typing import Any, Optional
 from flask import Flask, Response, jsonify, request, send_from_directory
 
 from parse_input import ParsedInput, parse_user_message
-from pipeline import EXTRA_STEP_DEFS, STEP_DEFS, run_extras_pipeline, run_pipeline
+from pipeline import (
+    EXTRA_STEP_DEFS,
+    STEP_DEFS,
+    run_enrich_competitors,
+    run_extras_pipeline,
+    run_pipeline,
+)
 from mercadopago_client import (
     EXTRAS_PRICE,
     PRO_PRICE,
@@ -60,7 +66,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"
 
 try:
     usage_db.init_db()
@@ -674,6 +680,105 @@ def job_events(job_id: str):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.post("/api/competitors/enrich")
+def enrich_competitors():
+    """Adiciona ate 3 concorrentes e reprocessa Ads/SEO/Marca sem travar o fluxo principal."""
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip() or "chatguru"
+    company = (data.get("company") or "").strip() or slug
+    parent_job_id = (data.get("job_id") or "").strip()
+    demo = bool(data.get("demo"))
+    raw = data.get("competitors")
+    comps: list[str] = []
+    if isinstance(raw, list):
+        comps = [str(x).strip() for x in raw if str(x).strip()]
+    elif isinstance(raw, str):
+        from parse_input import _split_competitors
+        comps = _split_competitors(raw)
+    comps = comps[:3]
+    if not comps:
+        return jsonify({"ok": True, "skipped": True})
+
+    preferred = list(data.get("preferred") or [])
+    parent = jobs.get(parent_job_id) if parent_job_id else None
+    if parent and parent.parsed and parent.parsed.competitors:
+        for c in parent.parsed.competitors:
+            if c not in preferred:
+                preferred.append(c)
+
+    job_id = uuid.uuid4().hex[:12]
+    parsed = ParsedInput(
+        company=company,
+        slug=slug,
+        demo=demo or DEMO_ONLY,
+        competitors=preferred,
+        kind="enrich",
+        raw=f"enrich:{slug}",
+    )
+    job = Job(job_id=job_id, parsed=parsed)
+    jobs[job_id] = job
+
+    def _worker_enrich() -> None:
+        try:
+            job.status = "running"
+
+            def _emit(event_type: str, **payload: Any) -> None:
+                emit(job, event_type, **payload)
+                # Espelha partials no job pai se ainda existir (mesma aba SSE)
+                if parent and event_type in ("partial", "log", "progress"):
+                    try:
+                        emit(parent, event_type, **payload)
+                    except Exception:
+                        pass
+
+            result = run_enrich_competitors(
+                slug=slug,
+                company=company,
+                competitors=comps,
+                emit=_emit,
+                preferred_competitors=preferred,
+                demo=bool(parsed.demo),
+            )
+            if parent and parent.parsed:
+                for n in comps:
+                    if n not in parent.parsed.competitors:
+                        parent.parsed.competitors.append(n)
+                if isinstance(result, dict) and result.get("report"):
+                    parent.report = result["report"]
+            job.report = (result or {}).get("report")
+            job.status = "done"
+            emit(job, "complete", report=job.report, enrich=True)
+            if parent:
+                emit(parent, "enrich_complete", added=comps)
+        except Exception as e:
+            job.status = "error"
+            job.error = str(e)
+            emit(job, "error", message=str(e))
+            if parent:
+                emit(parent, "log", line=f"Falha ao enriquecer concorrentes: {e}")
+
+    try:
+        usage_db.create_run(
+            run_id=job_id,
+            kind="enrich",
+            company=company,
+            slug=slug,
+            demo=bool(parsed.demo),
+            preferred_competitors=comps,
+            parent_run_id=parent_job_id,
+        )
+    except Exception:
+        pass
+    threading.Thread(target=_worker_enrich, daemon=True).start()
+    return jsonify({
+        "ok": True,
+        "job_id": job_id,
+        "parent_job_id": parent_job_id or None,
+        "competitors": comps,
+        "ack": f"Vou incluir **{', '.join(comps)}** e atualizar Ads, SEO e Marca.",
+    })
 
 
 @app.post("/api/jobs/<job_id>/continue")

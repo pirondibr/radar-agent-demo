@@ -278,15 +278,10 @@ def _emit_progress(
     )
 
 
-def _wait_extra_competitors(
-    emit: EmitFn,
-    wait_fn: Optional[Callable[[str, float], dict]],
-    *,
-    timeout: float = 600,
-) -> list[str]:
-    """Pede ate 3 concorrentes extras ao usuario; wait_fn bloqueia ate /continue."""
+def _prompt_extra_competitors(emit: EmitFn) -> None:
+    """Aviso nao-bloqueante: UI pergunta concorrentes extras apos o Google Ads."""
     emit(
-        "await_input",
+        "prompt_extra_competitors",
         kind="extra_competitors",
         message=(
             "Tem algum concorrente que não apareceu na lista? "
@@ -295,20 +290,6 @@ def _wait_extra_competitors(
         max_items=3,
         skip_label="Continuar sem adicionar",
     )
-    if not wait_fn:
-        return []
-    payload = wait_fn("extra_competitors", timeout) or {}
-    if payload.get("skip"):
-        return []
-    comps = payload.get("competitors") or []
-    out: list[str] = []
-    for c in comps:
-        s = str(c or "").strip()
-        if s and s not in out:
-            out.append(s)
-        if len(out) >= 3:
-            break
-    return out
 
 
 def _record_competitors_step(run_id: Optional[str], early: dict, step_id: str = "briefing_concorrentes") -> None:
@@ -472,28 +453,12 @@ def _reveal_from_report(
         "Briefing e concorrentes prontos", mode,
     )
 
-    extra_names = _wait_extra_competitors(emit, wait_fn)
-    if extra_names and parsed is not None:
-        for n in extra_names:
-            if n not in parsed.competitors:
-                parsed.competitors.append(n)
-        slug = parsed.slug or slugify_client(parsed.url or parsed.company or client)
-        append_user_competitors(find_concorrentes_xlsx(slug), extra_names, client_name=client)
-        # Reconstroi report com preferred atualizado se houver metricas
-        xlsx = find_metricas_xlsx(slug)
-        if xlsx and xlsx.exists():
-            report = build_report_from_xlsx(
-                xlsx,
-                client_name=client,
-                preferred_competitors=parsed.competitors,
-            )
-            _emit_section(emit, "briefing_concorrentes", report, client)
-
     # 2 Google Ads
     _emit_progress(emit, set_step, "google_ads", "running", "Ranking Google Ads...", mode)
     time.sleep(pauses.get("google_ads", 1.0))
     _emit_section(emit, "google_ads", report, client)
     _emit_progress(emit, set_step, "google_ads", "done", "Google Ads pronto", mode)
+    _prompt_extra_competitors(emit)
 
     # 3 SEO
     _emit_progress(emit, set_step, "seo", "running", "Ranking SEO...", mode)
@@ -652,36 +617,7 @@ def run_live_pipeline(
         mode,
     )
 
-    # Pausa: usuario pode adicionar ate 3 concorrentes antes do Ads
-    extra_names = _wait_extra_competitors(emit, wait_fn)
-    if extra_names:
-        emit("log", line=f"Adicionando concorrentes do usuario: {', '.join(extra_names)}")
-        for n in extra_names:
-            if n not in parsed.competitors:
-                parsed.competitors.append(n)
-        added = append_user_competitors(
-            find_concorrentes_xlsx(slug),
-            extra_names,
-            client_name=client_name,
-        )
-        early = build_early_briefing_competitors(
-            find_briefing_xlsx(slug),
-            find_concorrentes_xlsx(slug),
-            client_name=client_name,
-            preferred_competitors=parsed.competitors,
-            fallback_url=url,
-        )
-        # Garante preferred na lista UI
-        if added:
-            existing_doms = {str(c.get("domain") or "").lower() for c in (early.get("competitors") or [])}
-            for a in added:
-                if a.get("domain", "").lower() not in existing_doms:
-                    early.setdefault("competitors", []).append(a)
-            early["competitors_count"] = len([c for c in early["competitors"] if not c.get("is_client")])
-        _emit_section(emit, "briefing_concorrentes", early, client_name)
-        emit("log", line=f"{len(extra_names)} concorrente(s) adicionados ao radar.")
-
-    # --- Etapa 2/4: somente Google Ads ---
+    # --- Etapa 2/4: Google Ads (sem pausar — pergunta de concorrentes vem depois do Ads) ---
     _emit_progress(
         emit, set_step, "google_ads", "running",
         "Coletando Google Ads Transparency...", mode,
@@ -701,6 +637,7 @@ def run_live_pipeline(
     )
     _emit_section(emit, "google_ads", report, client_name)
     _emit_progress(emit, set_step, "google_ads", "done", "Google Ads pronto", mode)
+    _prompt_extra_competitors(emit)
 
     # --- Etapa 3/4: somente SEO (Semrush do script 3) ---
     _emit_progress(emit, set_step, "seo", "running", "Montando ranking SEO organico...", mode)
@@ -732,6 +669,94 @@ def run_live_pipeline(
     _record_xlsx_artifacts(run_id, slug, "brand")
 
     return report
+
+
+def run_enrich_competitors(
+    *,
+    slug: str,
+    company: str,
+    competitors: list[str],
+    emit: EmitFn,
+    preferred_competitors: Optional[list[str]] = None,
+    demo: bool = False,
+) -> dict:
+    """Adiciona concorrentes sugeridos e reprocessa Ads + SEO + Marca (nao bloqueia o fluxo principal)."""
+    slug = slug or "chatguru"
+    client_name = company or slug
+    preferred = list(preferred_competitors or [])
+    names = []
+    for c in competitors or []:
+        s = str(c or "").strip()
+        if s and s not in names:
+            names.append(s)
+        if len(names) >= 3:
+            break
+    if not names:
+        return {"ok": True, "added": [], "skipped": True}
+
+    emit("log", line=f"Enriquecendo radar com: {', '.join(names)}")
+    for n in names:
+        if n not in preferred:
+            preferred.append(n)
+
+    added = append_user_competitors(
+        find_concorrentes_xlsx(slug),
+        names,
+        client_name=client_name,
+    )
+    emit(
+        "partial",
+        section="briefing_concorrentes",
+        client=client_name,
+        data=build_early_briefing_competitors(
+            find_briefing_xlsx(slug),
+            find_concorrentes_xlsx(slug),
+            client_name=client_name,
+            preferred_competitors=preferred,
+        ),
+    )
+
+    def on_log(line: str) -> None:
+        emit("log", line=line)
+
+    if demo:
+        xlsx = find_metricas_xlsx(slug) or DEMO_XLSX
+        if not xlsx.exists():
+            raise FileNotFoundError(f"XLSX demo nao encontrado: {xlsx}")
+        report = build_report_from_xlsx(
+            xlsx, client_name=client_name, preferred_competitors=preferred
+        )
+        _emit_section(emit, "google_ads", report, client_name)
+        _emit_section(emit, "seo", report, client_name)
+        _emit_section(emit, "brand", report, client_name)
+        return {"ok": True, "added": added, "report": report, "preferred": preferred}
+
+    if not SCRIPT_GOOGLE_ADS.exists():
+        raise FileNotFoundError(SCRIPT_GOOGLE_ADS)
+    emit("progress", step_id="enrich_ads", state="running", detail="Atualizando Google Ads com novos concorrentes...")
+    _run_script([sys.executable, str(SCRIPT_GOOGLE_ADS), slug], FINAL_DIR, on_log)
+    xlsx = find_metricas_xlsx(slug)
+    if not xlsx:
+        raise FileNotFoundError(f"XLSX de metricas nao gerado para '{slug}'")
+    report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred)
+    _emit_section(emit, "google_ads", report, client_name)
+
+    if SCRIPT_SEO.exists():
+        emit("progress", step_id="enrich_seo", state="running", detail="Atualizando SEO...")
+        _run_script([sys.executable, str(SCRIPT_SEO), slug], FINAL_DIR, on_log)
+        xlsx = find_metricas_xlsx(slug) or xlsx
+        report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred)
+        _emit_section(emit, "seo", report, client_name)
+
+    if SCRIPT_BRAND.exists():
+        emit("progress", step_id="enrich_brand", state="running", detail="Atualizando Marca...")
+        _run_script([sys.executable, str(SCRIPT_BRAND), slug], FINAL_DIR, on_log)
+        xlsx = find_metricas_xlsx(slug) or xlsx
+        report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred)
+        _emit_section(emit, "brand", report, client_name)
+
+    emit("log", line=f"Relatorios atualizados com {len(names)} concorrente(s).")
+    return {"ok": True, "added": added, "report": report, "preferred": preferred}
 
 
 def run_pipeline(

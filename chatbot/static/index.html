@@ -145,7 +145,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 </head>
 <body>
 <div class="top">
- <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar da Concorrência</div><span class="top-version" id="appVersion">v1.5.0</span></div>
+ <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar da Concorrência</div><span class="top-version" id="appVersion">v1.5.1</span></div>
  <div class="top-sep"></div>
  <div class="top-status" id="topStatus">Pronto</div>
  <div class="top-right"><div class="top-meta" id="topMeta">MVP Ads + SEO + Marca</div></div>
@@ -162,7 +162,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 const BOT_NAME = 'Radar da Concorrência';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -1063,6 +1063,7 @@ async function startExtrasJob() {
 
 
 function showExtraCompetitorsPrompt(jobId, msg) {
+ if (document.querySelector('[data-extra-comps]')) return; // ja mostrado
  const text = (msg && msg.message) || 'Tem algum concorrente que não apareceu na lista? Informe e vamos adicionar. (Limite de 3 empresas.)';
  const node = append(`
  <div class="q-block reveal" data-extra-comps>
@@ -1071,47 +1072,65 @@ function showExtraCompetitorsPrompt(jobId, msg) {
   <div class="pay-form" style="display:flex">
    <input type="text" data-extra-input placeholder="Ex: empresa1.com.br, concorrente2, marca3" />
    <div class="pay-choice" style="margin-top:8px">
-    <button type="button" data-extra-send>Adicionar e continuar</button>
-    <button type="button" data-extra-skip>Continuar sem adicionar</button>
+    <button type="button" data-extra-send>Adicionar e atualizar relatórios</button>
+    <button type="button" data-extra-skip>Seguir sem adicionar</button>
    </div>
-   <div class="hint">Até 3 empresas, separadas por vírgula.</div>
+   <div class="hint">Até 3 empresas. O restante da análise (SEO/Marca) continua em paralelo.</div>
   </div>
  </div>`);
  const inp = node.querySelector('[data-extra-input]');
  const send = node.querySelector('[data-extra-send]');
  const skip = node.querySelector('[data-extra-skip]');
- async function resume(payload) {
+ async function submitEnrich(parts) {
   send.disabled = true; skip.disabled = true;
-  setBusy(true);
+  if (!parts.length) {
+   node.querySelector('.pay-form').style.display = 'none';
+   addBotBubble('Ok, seguimos com a lista atual.');
+   return;
+  }
+  addBotBubble(`Vou incluir **${parts.join(', ')}** e atualizar Ads, SEO e Marca.`);
   try {
-   await fetch('/api/jobs/' + encodeURIComponent(jobId) + '/continue', {
+   const res = await fetch('/api/competitors/enrich', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+     job_id: jobId || analysisCtx.job_id || '',
+     slug: analysisCtx.slug || '',
+     company: analysisCtx.company || '',
+     demo: !!analysisCtx.demo,
+     competitors: parts,
+    }),
    });
+   const data = await res.json();
+   if (!res.ok) {
+    addBotBubble(data.error || 'Não consegui atualizar os concorrentes.');
+    send.disabled = false; skip.disabled = false;
+    return;
+   }
    node.querySelector('.pay-form').style.display = 'none';
+   // partials atualizados chegam pelo SSE do job pai (espelhados)
+   if (data.job_id && data.job_id !== jobId) {
+    // escuta enrich em paralelo (caso o job pai ja tenha fechado o SSE)
+    listenJobEvents(data.job_id, false);
+   }
   } catch (e) {
-   addBotBubble('Não consegui retomar: ' + e.message);
+   addBotBubble('Falha ao enriquecer: ' + e.message);
    send.disabled = false; skip.disabled = false;
-   setBusy(false);
   }
  }
  send.addEventListener('click', () => {
   const raw = (inp.value || '').trim();
   addUserBubble(raw || '(nenhum)');
   const parts = raw.split(/[,;\/\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3);
-  awaitingExtraJobId = null;
-  resume({ kind: 'extra_competitors', competitors: parts, skip: parts.length === 0 });
+  submitEnrich(parts);
  });
  skip.addEventListener('click', () => {
-  addUserBubble('Continuar sem adicionar');
-  awaitingExtraJobId = null;
-  resume({ kind: 'extra_competitors', competitors: [], skip: true });
+  addUserBubble('Seguir sem adicionar');
+  submitEnrich([]);
  });
  inp.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') send.click();
  });
- inp.focus();
 }
 
 function listenJobEvents(jobId, isExtras) {
@@ -1138,10 +1157,11 @@ function listenJobEvents(jobId, isExtras) {
    updateProgressUI(msg);
    if (msg.progress_label) topStatus.textContent = msg.progress_label;
   }
-  if (msg.type === 'await_input') {
-   setBusy(false);
-   awaitingExtraJobId = jobId;
+  if (msg.type === 'prompt_extra_competitors' || msg.type === 'await_input') {
    showExtraCompetitorsPrompt(jobId, msg);
+  }
+  if (msg.type === 'enrich_complete') {
+   addBotBubble('Pronto — relatórios atualizados com os concorrentes que você indicou.');
   }
   if (msg.type === 'partial') {
    gotPartial = true;
@@ -1152,6 +1172,10 @@ function listenJobEvents(jobId, isExtras) {
    }
   }
   if (msg.type === 'complete') {
+   if (msg.enrich) {
+    es.close();
+    return;
+   }
    updateSteps(msg.steps || {});
    document.querySelectorAll('#stepsList .step').forEach(s => s.classList.add('done'));
    clearStageProgressTimer();
