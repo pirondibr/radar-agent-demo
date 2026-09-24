@@ -843,14 +843,23 @@ def parse_youtube_followers(url: str) -> int | None:
 
 
 def parse_tiktok_followers(url: str) -> int | None:
-    text = fetch_url_text(url, allow_proxy=True, prefer_proxy=False)
+    # TikTok tambem bloqueia IP direto — ScrapingBee com JS
+    text = fetch_url_text(url, allow_proxy=True, prefer_proxy=True, render_js=True)
+    if not text:
+        text = fetch_url_text(url, allow_proxy=True, prefer_proxy=True, render_js=False)
+    if not text:
+        text = fetch_url_text(url, allow_proxy=True, prefer_proxy=False)
     if not text:
         return None
     text_ascii = ascii_text(text)
     soup = BeautifulSoup(text, "html.parser")
     for meta in soup.find_all("meta"):
         content = ascii_text(meta.get("content", "") or "")
-        for pattern in (r'([0-9][0-9.,]*)\s*mil\s+seguidores', r'([0-9][0-9.,]*)\s+Followers', r'([0-9][0-9.,]*)\s+seguidores'):
+        for pattern in (
+            r'([0-9][0-9.,]*)\s*mil\s+seguidores',
+            r'([0-9][0-9.,]*)\s+Followers',
+            r'([0-9][0-9.,]*)\s+seguidores',
+        ):
             m = re.search(pattern, content, flags=re.IGNORECASE)
             if m:
                 token = m.group(1) + ("mil" if "mil" in pattern else "")
@@ -859,6 +868,7 @@ def parse_tiktok_followers(url: str) -> int | None:
                     return n
     patterns = [
         r'"followerCount"\s*:\s*(\d+)',
+        r'"fans"\s*:\s*(\d+)',
         r'([\d.,]+mil)\s+seguidores',
         r'([\d.,kmb]+)\s+Followers',
         r'([\d.,kmb]+)\s+seguidores',
@@ -1005,13 +1015,11 @@ def build_metric_rows(
             t_links = time.time()
             instagram_followers = parse_instagram_followers(socials["instagram"]) if socials["instagram"] else None
             youtube_followers = parse_youtube_followers(socials["youtube"]) if socials["youtube"] else None
-            # TikTok: script ainda nao existe — nao coletamos no chatbot
-            socials["tiktok"] = ""
-            tiktok_followers = None
+            tiktok_followers = parse_tiktok_followers(socials["tiktok"]) if socials["tiktok"] else None
             print(
                 f"[SOCIAL] ({i}/{n}) {dom} links={time.time() - t0:.1f}s "
                 f"followers_extra={time.time() - t_links:.1f}s total={time.time() - t0:.1f}s "
-                f"(tiktok skipped)",
+                f"ig={instagram_followers} yt={youtube_followers} tt={tiktok_followers}",
                 flush=True,
             )
         else:

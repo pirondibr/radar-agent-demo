@@ -778,6 +778,11 @@ def build_report_from_xlsx(
                     "youtube seguidores", "youtube followers", "youtube", "youtube seguidores",
                 )),
                 "youtube_url": str(_get(row, idx, "youtube url", "youtube url") or ""),
+                "tiktok_followers": _safe_int(_get(
+                    row, idx,
+                    "tiktok seguidores", "tiktok followers", "tiktok",
+                )),
+                "tiktok_url": str(_get(row, idx, "tiktok url", "tik tok url") or ""),
                 "seo_growth": growth.get(dom_key),
                 "brand_growth": brand_growth.get(dom_key),
                 "growth_years": growth_years.get(dom_key),
@@ -809,6 +814,8 @@ def build_report_from_xlsx(
             "instagram_url": "",
             "youtube_followers": None,
             "youtube_url": "",
+            "tiktok_followers": None,
+            "tiktok_url": "",
             "seo_growth": client_from_sheet.get("seo_growth"),
             "brand_growth": client_from_sheet.get("brand_growth"),
             "growth_years": client_from_sheet.get("growth_years"),
@@ -836,6 +843,8 @@ def build_report_from_xlsx(
             "instagram_url": "",
             "youtube_followers": None,
             "youtube_url": "",
+            "tiktok_followers": None,
+            "tiktok_url": "",
             "seo_growth": growth.get(guess_dom.lower()),
             "brand_growth": brand_growth.get(guess_dom.lower()),
             "growth_years": growth_years.get(guess_dom.lower()),
@@ -904,6 +913,8 @@ def build_report_from_xlsx(
                 "instagram_url": "",
                 "youtube_followers": None,
                 "youtube_url": "",
+                "tiktok_followers": None,
+                "tiktok_url": "",
                 "seo_growth": growth.get(dom_key),
                 "brand_growth": brand_growth.get(dom_key),
                 "growth_years": growth_years.get(dom_key),
@@ -942,6 +953,8 @@ def build_report_from_xlsx(
             "instagram_url": "",
             "youtube_followers": None,
             "youtube_url": "",
+            "tiktok_followers": None,
+            "tiktok_url": "",
             "seo_growth": growth.get(dom),
             "brand_growth": brand_growth.get(dom),
             "growth_years": growth_years.get(dom),
@@ -1202,6 +1215,11 @@ def build_report_from_xlsx(
         "Na versão Pro avaliamos autoridade em vídeo e oportunidades de conteúdo no YouTube.",
         include_with_url=True,
     )
+    tt_section = _count_section(
+        "tiktok_followers", "tiktok_url", "TikTok", "seguidores",
+        "Na versão Pro analisamos formatos e o que gera crescimento no TikTok do seu nicho.",
+        include_with_url=True,
+    )
 
     client_ads_rank = next((i + 1 for i, r in enumerate(gads_table) if r.get("is_client")), None)
     client_seo_rank = next((i + 1 for i, r in enumerate(seo_table) if r.get("is_client")), None)
@@ -1267,6 +1285,7 @@ def build_report_from_xlsx(
         "linkedin": linkedin_section,
         "instagram": ig_section,
         "youtube": yt_section,
+        "tiktok": tt_section,
         "source_xlsx": str(xlsx_path),
     }
 

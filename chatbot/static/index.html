@@ -172,7 +172,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.6';
+const APP_VERSION = '1.5.7';
 const BOT_NAME = 'Radar da Concorrência';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -374,10 +374,15 @@ const PRO_QUESTIONS_YT = [
  'Quais formatos de vídeo geram inscritos no meu nicho?',
 ];
 
+const PRO_QUESTIONS_TT = [
+ 'Quais formatos de TikTok geram crescimento no meu nicho?',
+ 'O que o líder posta no TikTok que eu ainda não testo?',
+];
+
 function startPaidCapture(channel) {
  const channelLabel = ({
   ads: 'Google Ads', seo: 'SEO', brand: 'Marca',
-  meta: 'Meta Ads', linkedin: 'LinkedIn', instagram: 'Instagram', youtube: 'YouTube',
+  meta: 'Meta Ads', linkedin: 'LinkedIn', instagram: 'Instagram', youtube: 'YouTube', tiktok: 'TikTok',
  })[channel] || channel;
 
  // Destrava o composer mesmo se a pipeline ainda estiver "busy"
@@ -440,13 +445,19 @@ async function openMercadoPagoCheckout(pending) {
  const btnCheck = node.querySelector('[data-pay-check]');
  let orderId = pending.orderId || '';
  let pollTimer = null;
+ let paidDone = false;
+ if (!window.__mpConfirmedOrders) window.__mpConfirmedOrders = new Set();
 
  async function checkPaid() {
-  if (!orderId) return false;
+  if (!orderId || paidDone) return false;
+  if (window.__mpConfirmedOrders.has(orderId)) return true;
   try {
    const res = await fetch('/api/checkout/' + encodeURIComponent(orderId));
    const data = await res.json();
    if (data.paid) {
+    if (paidDone) return true;
+    paidDone = true;
+    window.__mpConfirmedOrders.add(orderId);
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     try { sessionStorage.removeItem('radar_mp_pending'); } catch (e) {}
     contactPending = null;
@@ -523,12 +534,13 @@ async function openMercadoPagoCheckout(pending) {
 
  btnOpen.addEventListener('click', () => createAndOpen());
  btnCheck.addEventListener('click', () => checkPaid());
- window.addEventListener('message', (ev) => {
+ function onMpReturn(ev) {
   const d = ev && ev.data;
   if (!d || d.type !== 'mp_return') return;
   if (d.order_id) orderId = d.order_id;
   checkPaid();
- });
+ }
+ window.addEventListener('message', onMpReturn);
  createAndOpen();
 }
 
@@ -662,7 +674,7 @@ function renderProFinale() {
  <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Canais extra</div></div>
  <div class="hero-num">
  <div class="finale-price">R$ ${esc(String(price))}</div>
- <div class="hero-sub">Meta · LinkedIn · Instagram · YouTube (TikTok em breve)</div>
+ <div class="hero-sub">Meta · Instagram · YouTube · TikTok</div>
  </div>
  <div class="ac-text">
  Pague com <strong>PIX ou cartão</strong> via Mercado Pago e liberamos os rankings dos canais extra no chat.
@@ -672,7 +684,7 @@ function renderProFinale() {
  <span class="channel-chip meta">Meta Ads</span>
  <span class="channel-chip ig">Instagram</span>
  <span class="channel-chip yt">YouTube</span>
- <span class="channel-chip li">LinkedIn</span>
+ <span class="channel-chip tt">TikTok</span>
  </div>
  <div class="finale-cta">
  <div class="pro-cta-text" style="max-width:380px">
@@ -713,7 +725,7 @@ async function startExtrasCheckout(root, btn) {
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (hint) hint.textContent = 'Pagamento confirmado. Iniciando canais extra...';
     if (btn) btn.disabled = true;
-    addBotBubble('Pagamento dos **canais extra** confirmado. Vou liberar Meta, LinkedIn, Instagram e YouTube.');
+    addBotBubble('Pagamento dos **canais extra** confirmado. Vou liberar Meta, Instagram, YouTube e TikTok.');
     startExtrasJob();
     return true;
    }
@@ -1015,17 +1027,6 @@ else if (section === 'meta') renderCountChannel(
    ctaText: 'Desbloqueie a leitura profunda de <strong>criativos Meta</strong> do líder.',
   }
  );
- else if (section === 'linkedin') renderCountChannel(
-  data, 'LinkedIn Ads Ranking', 'var(--blue)', 'L', 'lb-seo', 'ag-seo', 'ac-seo',
-  'Canais extra 4/4: Quem anuncia mais no LinkedIn?',
-  {
-   channel: 'linkedin', questions: PRO_QUESTIONS_LINKEDIN,
-   bubble: 'Quer aprofundar <strong>LinkedIn Ads</strong>? Na versão Pro abrimos mensagens e estrutura.',
-   label: 'Radar Pro LinkedIn profundo',
-   blurb: 'Exemplos de perguntas desbloqueadas na versão paga:',
-   ctaText: 'Desbloqueie a análise Pro de <strong>campanhas LinkedIn</strong>.',
-  }
- );
  else if (section === 'instagram') renderCountChannel(
   data, 'Instagram Ranking', 'var(--pink)', 'I', 'lb-finale', 'ag-finale', 'ac-finale',
   'Canais extra 2/4: Quem cresce mais no Instagram?',
@@ -1048,6 +1049,19 @@ else if (section === 'meta') renderCountChannel(
    ctaText: 'Desbloqueie a análise Pro de <strong>YouTube</strong>.',
   }
  );
+ else if (section === 'tiktok') renderCountChannel(
+  data, 'TikTok Ranking', 'var(--text)', 'T', 'lb-finale', 'ag-finale', 'ac-finale',
+  'Canais extra 4/4: Quem cresce mais no TikTok?',
+  {
+   channel: 'tiktok', questions: PRO_QUESTIONS_TT,
+   bubble: 'Quer crescimento em vídeo curto? Na <strong>versão Pro</strong> aprofundamos TikTok.',
+   label: 'Radar Pro TikTok profundo',
+   blurb: 'Exemplos de perguntas desbloqueadas na versão paga:',
+   ctaText: 'Desbloqueie a análise Pro de <strong>TikTok</strong>.',
+  }
+ );
+ // linkedin desativado por enquanto
+ else if (section === 'linkedin') { /* no-op */ }
 }
 
 function renderReport(report) {

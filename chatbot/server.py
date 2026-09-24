@@ -66,7 +66,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.6"
+APP_VERSION = "1.5.7"
 
 try:
     usage_db.init_db()
@@ -688,8 +688,8 @@ def start_extras():
         },
         "steps": EXTRA_STEP_DEFS,
         "ack": (
-            f"Vou analisar os **canais extra** de **{company}**: Meta Ads, LinkedIn, Instagram e YouTube "
-            "(TikTok em breve). Resultados aparecem etapa a etapa."
+            f"Vou analisar os **canais extra** de **{company}**: Meta Ads, Instagram, YouTube e TikTok "
+            "(LinkedIn em breve). Resultados aparecem etapa a etapa."
         ),
     })
 

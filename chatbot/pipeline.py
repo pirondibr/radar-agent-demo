@@ -86,7 +86,7 @@ STEP_DEFS = [
 
 TOTAL_STEPS = len(STEP_DEFS)
 
-# Canais extra (apos free): Meta → Instagram → YouTube → LinkedIn (sem TikTok)
+# Canais extra (apos free): Meta → Instagram → YouTube → TikTok (LinkedIn pausado)
 EXTRA_STEP_DEFS = [
     {
         "id": "meta",
@@ -119,14 +119,14 @@ EXTRA_STEP_DEFS = [
         "eta_cache": 9,
     },
     {
-        "id": "linkedin",
-        "label": "LinkedIn Ads",
+        "id": "tiktok",
+        "label": "TikTok",
         "tag": "4/4",
-        "tag_cls": "blue",
+        "tag_cls": "green",
         "index": 4,
-        "eta_live": 180,
-        "eta_demo": 12,
-        "eta_cache": 10,
+        "eta_live": 60,
+        "eta_demo": 10,
+        "eta_cache": 9,
     },
 ]
 
@@ -138,9 +138,9 @@ REVEAL_PAUSE = {
     "seo": 1.5,
     "brand": 1.4,
     "meta": 1.2,
-    "linkedin": 1.2,
     "instagram": 1.1,
     "youtube": 1.0,
+    "tiktok": 1.0,
 }
 
 # Demo publica: revelacao mais rapida
@@ -151,9 +151,9 @@ if __import__("os").environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true"
         "seo": 0.6,
         "brand": 0.6,
         "meta": 0.5,
-        "linkedin": 0.5,
         "instagram": 0.5,
         "youtube": 0.5,
+        "tiktok": 0.5,
     }
 
 
@@ -446,7 +446,7 @@ def _emit_section(emit: EmitFn, section: str, report: dict, client: str = "") ->
     elif section == "brand":
         payload["data"] = report.get("brand") or {}
         payload["client"] = report.get("client")
-    elif section in ("meta", "linkedin", "instagram", "youtube"):
+    elif section in ("meta", "linkedin", "instagram", "youtube", "tiktok"):
         payload["data"] = report.get(section) or {}
         payload["client"] = report.get("client")
     emit("partial", **payload)
@@ -848,7 +848,7 @@ def run_extras_pipeline(
             ("meta", "Meta Ads"),
             ("instagram", "Instagram"),
             ("youtube", "YouTube"),
-            ("linkedin", "LinkedIn Ads"),
+            ("tiktok", "TikTok"),
         ):
             _emit_progress(
                 emit, set_step, sid, "running", f"Ranking {label}...", mode,
@@ -862,10 +862,10 @@ def run_extras_pipeline(
             )
         return report
 
-    if not SCRIPT_META.exists() or not SCRIPT_LINKEDIN.exists() or not SCRIPT_SOCIAL.exists():
-        raise FileNotFoundError("Scripts de canais extra (5d/5e/5f) nao encontrados.")
+    if not SCRIPT_META.exists() or not SCRIPT_SOCIAL.exists():
+        raise FileNotFoundError("Scripts de canais extra (5d/5f) nao encontrados.")
 
-    # Meta → Instagram → YouTube → LinkedIn
+    # Meta → Instagram → YouTube → TikTok (LinkedIn pausado)
     _emit_progress(
         emit, set_step, "meta", "running", "Coletando Meta Ads Library...", mode,
         defs=defs, total=total,
@@ -886,12 +886,20 @@ def run_extras_pipeline(
     _emit_section(emit, "meta", report, client_name)
     _emit_progress(emit, set_step, "meta", "done", "Meta Ads pronto", mode, defs=defs, total=total)
 
-    # Social = IG + YT (um script, duas revelacoes)
+    # Social = IG + YT + TikTok (um script, tres revelacoes)
     _emit_progress(
-        emit, set_step, "instagram", "running", "Coletando Instagram + YouTube...", mode,
+        emit, set_step, "instagram", "running", "Coletando Instagram, YouTube e TikTok...", mode,
         defs=defs, total=total,
     )
-    _run_script([sys.executable, str(SCRIPT_SOCIAL), slug], FINAL_DIR, on_log)
+    try:
+        _run_script(
+            [sys.executable, str(SCRIPT_SOCIAL), slug],
+            FINAL_DIR,
+            on_log,
+            timeout_sec=600,
+        )
+    except Exception as e:
+        emit("log", line=f"[SOCIAL] Falha/timeout — seguindo com dados parciais: {e}")
     xlsx = find_metricas_xlsx(slug) or xlsx
     report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred_competitors)
     _emit_section(emit, "instagram", report, client_name)
@@ -905,15 +913,12 @@ def run_extras_pipeline(
     _emit_section(emit, "youtube", report, client_name)
     _emit_progress(emit, set_step, "youtube", "done", "YouTube pronto", mode, defs=defs, total=total)
 
-    # LinkedIn por ultimo
     _emit_progress(
-        emit, set_step, "linkedin", "running", "Coletando LinkedIn Ads...", mode,
+        emit, set_step, "tiktok", "running", "Montando ranking TikTok...", mode,
         defs=defs, total=total,
     )
-    _run_script([sys.executable, str(SCRIPT_LINKEDIN), slug], FINAL_DIR, on_log)
-    xlsx = find_metricas_xlsx(slug) or xlsx
-    report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred_competitors)
-    _emit_section(emit, "linkedin", report, client_name)
-    _emit_progress(emit, set_step, "linkedin", "done", "LinkedIn Ads pronto", mode, defs=defs, total=total)
+    time.sleep(REVEAL_PAUSE.get("tiktok", 1.0))
+    _emit_section(emit, "tiktok", report, client_name)
+    _emit_progress(emit, set_step, "tiktok", "done", "TikTok pronto", mode, defs=defs, total=total)
 
     return report
