@@ -120,6 +120,8 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .wa-fab:hover{filter:brightness(1.05);color:#fff}
 .wa-fab svg{width:20px;height:20px;flex-shrink:0}
 @media(max-width:640px){.wa-fab{right:12px;bottom:78px;padding:11px 14px;font-size:12px}.wa-fab .wa-fab-label{display:none}}
+body.video-mode .composer,body.video-mode .wa-fab{display:none !important}
+body.video-mode .main{padding-bottom:24px}
 .reveal{opacity:0;transform:translateY(12px);transition:all .45s cubic-bezier(.16,1,.3,1)}.reveal.vis{opacity:1;transform:none}
 .hint{font-size:12px;color:#64748b;margin-top:6px;margin-left:0;line-height:1.6}.hint code{font-family:var(--mono);font-size:11px;background:#f1f5f9;color:#334155;padding:3px 7px;border-radius:5px;border:1px solid #e2e8f0}
 .err-card{background:var(--red-bg);border:1px solid rgba(220,38,38,.2);color:var(--red);padding:14px 16px;border-radius:10px;font-size:13px;margin-left:12px}
@@ -172,8 +174,9 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.10';
+const APP_VERSION = '1.5.11';
 const BOT_NAME = 'Radar da Concorrência';
+const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -181,7 +184,11 @@ const topStatus = document.getElementById('topStatus');
 const topMeta = document.getElementById('topMeta');
 const appVersionEl = document.getElementById('appVersion');
 if (appVersionEl) appVersionEl.textContent = 'v' + APP_VERSION;
-document.title = BOT_NAME + ' v' + APP_VERSION + ' | Consultor de Marketing';
+document.title = (VIDEO_MODE ? 'Demo vídeo · ' : '') + BOT_NAME + ' v' + APP_VERSION + ' | Consultor de Marketing';
+if (VIDEO_MODE) {
+ document.body.classList.add('video-mode');
+ if (topMeta) topMeta.textContent = 'Demo vídeo · Chatguru';
+}
 
 let busy = false;
 let awaitingExtraJobId = null;
@@ -636,6 +643,7 @@ async function submitPendingContact(rawContact) {
 }
 
 function renderProTeaser(opts) {
+ if (VIDEO_MODE) return; // demo video: sem blocos / paywall Pro
  const {
  channel = 'ads',
  questions = PRO_QUESTIONS_ADS,
@@ -694,6 +702,7 @@ function analysisBlocks(channel, analysisTitle, insight, proHook) {
 }
 
 function renderProFinale() {
+ if (VIDEO_MODE) return; // demo video: canais extra ja liberados, sem checkout
  const price = (window.__extrasPrice || window.__proPrice || 99);
  const node = append(`
  <div class="q-block reveal">
@@ -1109,6 +1118,7 @@ function renderReport(report) {
  renderAdsSection(report.google_ads, report.client);
  renderSeoSection(report.seo, report.client);
  renderBrandSection(report.brand, report.client);
+ if (VIDEO_MODE) return;
  renderProFinale();
  addBotBubble('Pronto. Quer analisar outra empresa? Envie uma nova URL.');
 }
@@ -1118,6 +1128,16 @@ async function boot() {
  const res = await fetch('/api/hello');
  const data = await res.json();
  stepDefs = data.steps || [];
+ if (VIDEO_MODE) {
+  addBotBubble(
+   'Modo **demo para vídeo**. Vou carregar o exemplo **Chatguru** (Ads, SEO, Marca) e em seguida os **canais extra**, sem checkout.',
+   true
+  );
+  window.__proPrice = data.pro_price || 99;
+  window.__extrasPrice = data.extras_price || data.pro_price || 99;
+  setTimeout(() => startVideoDemo(), 900);
+  return;
+ }
  addBotBubble(data.greeting, true);
  window.__proPrice = data.pro_price || 99;
  window.__extrasPrice = data.extras_price || data.pro_price || 99;
@@ -1130,6 +1150,44 @@ async function boot() {
  }, 450);
  } catch (e) {
  addBotBubble('Nao consegui iniciar. Verifique se o servidor esta rodando.');
+ }
+}
+
+async function startVideoDemo() {
+ if (busy) return;
+ setBusy(true);
+ try {
+  const res = await fetch('/api/chat', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ message: 'demo chatguru' }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+   append(`<div class="q-block reveal"><div class="err-card">${esc(data.error || 'Erro ao iniciar demo')}</div></div>`);
+   setBusy(false);
+   return;
+  }
+  const jobId = data.job_id;
+  stepDefs = data.steps || stepDefs;
+  const p = data.parsed || {};
+  analysisCtx = {
+   company: p.company || 'Chatguru',
+   slug: p.slug || 'chatguru',
+   job_id: jobId,
+   demo: true,
+  };
+  topMeta.textContent = 'Demo vídeo · Chatguru';
+  addUserBubble('chatguru.com.br');
+  addBotBubble(data.ack || 'Carregando o exemplo Chatguru...');
+  const first = stepDefs[0] || {};
+  const etaSec = first.eta_demo || 10;
+  const etaGuess = etaSec >= 60 ? ('~' + Math.round(etaSec / 60) + ' min') : ('~' + etaSec + 's');
+  renderStepsBlock(stepDefs, etaGuess);
+  listenJobEvents(jobId, false);
+ } catch (e) {
+  append(`<div class="q-block reveal"><div class="err-card">${esc(e.message)}</div></div>`);
+  setBusy(false);
  }
 }
 
@@ -1154,7 +1212,7 @@ async function startExtrasJob() {
    body: JSON.stringify({
     slug: analysisCtx.slug || 'chatguru',
     company: analysisCtx.company || '',
-    demo: !!analysisCtx.demo,
+    demo: VIDEO_MODE ? true : !!analysisCtx.demo,
     job_id: analysisCtx.job_id || '',
    }),
   });
@@ -1209,6 +1267,10 @@ function finishEnrich(report) {
 }
 
 function showExtraCompetitorsPrompt(jobId, msg) {
+ if (VIDEO_MODE) {
+  // Demo gravavel: nao interrompe o fluxo pedindo concorrentes
+  return;
+ }
  if (document.querySelector('[data-extra-comps]')) return; // ja mostrado
  const text = (msg && msg.message) || 'Tem algum concorrente que não apareceu na lista? Informe e vamos adicionar. (Limite de 3 empresas.)';
  const node = append(`
@@ -1339,12 +1401,26 @@ function listenJobEvents(jobId, isExtras) {
    if (etaEl) etaEl.textContent = 'Concluido';
    if (!gotPartial && msg.report && !(msg.extras || isExtras)) {
     renderReport(msg.report);
-   } else if (msg.extras || isExtras) {
-    addBotBubble('Canais extra concluídos. Cada bloco acima tem oferta Pro de análise profunda (entrega manual em até 24h).');
-   } else {
-    renderProFinale();
-    addBotBubble('Pronto. Quer analisar outra empresa? Envie uma nova URL.');
    }
+   if (msg.extras || isExtras) {
+    if (VIDEO_MODE) {
+     addBotBubble('Demonstração concluída: Ads, SEO, Marca e canais extra (Meta, Instagram, YouTube e TikTok) com o exemplo **Chatguru**.');
+    } else {
+     addBotBubble('Canais extra concluídos. Cada bloco acima tem oferta Pro de análise profunda (entrega manual em até 24h).');
+    }
+    es.close();
+    setBusy(false);
+    return;
+   }
+   if (VIDEO_MODE) {
+    addBotBubble('Etapas principais prontas. Agora liberando os **canais extra** (Meta, Instagram, YouTube, TikTok)...');
+    es.close();
+    setBusy(false);
+    setTimeout(() => { startExtrasJob(); }, 700);
+    return;
+   }
+   renderProFinale();
+   addBotBubble('Pronto. Quer analisar outra empresa? Envie uma nova URL.');
    es.close();
    setBusy(false);
   }
