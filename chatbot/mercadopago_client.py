@@ -42,28 +42,31 @@ def mp_public_key() -> str:
 
 
 def mp_sandbox_mode() -> bool:
-    """True when we should treat credentials as test.
-
-    Note: modern MP test credentials use APP_USR-... (not only TEST-...).
-    For APP_USR test tokens, Checkout Pro must open init_point (not
-    sandbox_init_point) — sandbox_init_point often yields "Ops, ocorreu um erro".
-    """
+    """True when credentials / env indicate a test integration."""
     flag = os.environ.get("MERCADOPAGO_SANDBOX", "").strip().lower()
     if flag in ("1", "true", "yes"):
         return True
     if flag in ("0", "false", "no"):
         return False
     token = mp_access_token().upper()
-    return token.startswith("TEST-") or token.startswith("APP_USR-")
+    # Classic test tokens; APP_USR alone is ambiguous (prod and test both use it)
+    return token.startswith("TEST-")
 
 
 def mp_use_sandbox_init_point() -> bool:
-    """Only classic TEST- tokens should open sandbox_init_point."""
-    token = mp_access_token().upper()
-    if token.startswith("TEST-"):
+    """Which checkout URL to open.
+
+    - MERCADOPAGO_SANDBOX=1 → always sandbox_init_point (URL sandbox.mercadopago.com)
+    - Token TEST-... → sandbox_init_point
+    - Token APP_USR-... (credenciais de teste do painel) → init_point
+      (URL parece producao, mas a preferencia e de teste — e o fluxo oficial atual)
+    """
+    flag = os.environ.get("MERCADOPAGO_SANDBOX", "").strip().lower()
+    if flag in ("1", "true", "yes"):
         return True
-    # APP_USR test credentials (painel "Credenciais de teste") → init_point
-    return False
+    if flag in ("0", "false", "no"):
+        return False
+    return mp_access_token().upper().startswith("TEST-")
 
 
 def mp_configured() -> bool:
@@ -224,10 +227,13 @@ def create_pro_checkout(
         "preference_id": order["preference_id"],
         "init_point": order["init_point"],
         "sandbox_init_point": order["sandbox_init_point"],
+        "checkout_url": init_point,
+        "checkout_is_sandbox_host": "sandbox.mercadopago" in (init_point or ""),
         "public_key": mp_public_key(),
         "amount": price,
         "channel": order["channel"],
         "product": product,
+        "sandbox_mode": mp_sandbox_mode(),
     }
 
 
