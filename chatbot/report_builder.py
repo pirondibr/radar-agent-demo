@@ -107,6 +107,17 @@ def _domain_label(domain: str) -> str:
     return d.split(".")[0].capitalize() if d else domain
 
 
+def _site_url(entity: dict[str, Any]) -> str:
+    raw = str(entity.get("url") or "").strip()
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw if raw.endswith("/") or "/" in raw[8:] else raw + "/"
+    dom = str(entity.get("domain") or "").strip().lower()
+    dom = dom.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
+    if not dom:
+        return ""
+    return f"https://{dom}/"
+
+
 def _slug(value: str) -> str:
     raw = (value or "").strip().lower()
     raw = raw.replace("https://", "").replace("http://", "").replace("www.", "")
@@ -1003,6 +1014,7 @@ def build_report_from_xlsx(
         gads_table.append({
             "name": e["name"],
             "domain": e["domain"],
+            "site_url": _site_url(e),
             "ads": ads,
             "ads_fmt": _fmt_int(ads) if ads else "0",
             "investimento": invest,
@@ -1034,6 +1046,7 @@ def build_report_from_xlsx(
         seo_table.append({
             "name": e["name"],
             "domain": e["domain"],
+            "site_url": _site_url(e),
             "traffic": seo,
             "traffic_fmt": _fmt_traffic(seo) if seo else "0",
             "bar": max(bar, 1) if seo else 1,
@@ -1066,6 +1079,7 @@ def build_report_from_xlsx(
         brand_table.append({
             "name": e["name"],
             "domain": e["domain"],
+            "site_url": _site_url(e),
             "traffic": marca,
             "traffic_fmt": _fmt_traffic(marca) if marca else "0",
             "bar": max(bar, 1) if marca else 1,
@@ -1118,6 +1132,7 @@ def build_report_from_xlsx(
             table.append({
                 "name": e["name"],
                 "domain": e["domain"],
+                "site_url": _site_url(e),
                 "value": val,
                 "value_fmt": _fmt_int(val) if (val or 0) > 0 else ("n/d" if str(e.get(url_field) or "").strip() else "0"),
                 "bar": max(bar, 1) if (val or 0) > 0 else 1,
@@ -1167,6 +1182,7 @@ def build_report_from_xlsx(
         meta_table.append({
             "name": e["name"],
             "domain": e["domain"],
+            "site_url": _site_url(e),
             "ads": ads_n,
             "ads_fmt": _fmt_int(ads_n),
             "investimento": invest,

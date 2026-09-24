@@ -105,18 +105,57 @@ def fmt_pct(v):
 # ETAPA 1A: SCRAPING
 # ---------------------------------------------------------------------------
 
+def _www_alternate_url(url: str) -> str:
+    """Apex <-> www (ex.: cigam.com.br 404, www.cigam.com.br 200)."""
+    try:
+        p = urlparse(url)
+        host = (p.netloc or "").strip()
+        if not host or "." not in host:
+            return ""
+        if host.lower().startswith("www."):
+            alt_host = host[4:]
+        else:
+            alt_host = "www." + host
+        return p._replace(netloc=alt_host).geturl()
+    except Exception:
+        return ""
+
+
 def scrape_site(url: str, max_chars: int = 12000) -> dict:
     print(f"[1A] Scraping {url} ...")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                       "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
     }
-    out = {"title": "", "meta_description": "", "h1": [], "h2": [], "nav": [], "body": ""}
-    try:
-        r = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
-        r.raise_for_status()
-    except Exception as e:
-        print(f"[1A] Erro no scraping: {e}")
+    out = {
+        "title": "", "meta_description": "", "h1": [], "h2": [], "nav": [], "body": "",
+        "final_url": url,
+    }
+    candidates = [url]
+    alt = _www_alternate_url(url)
+    if alt and alt.rstrip("/") != url.rstrip("/"):
+        candidates.append(alt)
+
+    r = None
+    last_err = None
+    for i, candidate in enumerate(candidates):
+        try:
+            if i > 0:
+                print(f"[1A] Tentando URL alternativa: {candidate} ...")
+            resp = requests.get(candidate, headers=headers, timeout=30, allow_redirects=True)
+            resp.raise_for_status()
+            r = resp
+            out["final_url"] = str(resp.url or candidate)
+            if i > 0:
+                print(f"[1A] OK via alternativa: {out['final_url']}")
+            break
+        except Exception as e:
+            last_err = e
+            print(f"[1A] Erro no scraping: {e}")
+
+    if r is None:
+        if last_err and len(candidates) > 1:
+            print(f"[1A] Todas as tentativas falharam (ultima: {last_err})")
         return out
 
     soup = BeautifulSoup(r.text, "html.parser")
@@ -2259,6 +2298,8 @@ def run(url: str):
     if not site.get("body"):
         print("[!] Site vazio. Abortando.")
         return
+
+    url = site.get("final_url") or url
 
     briefing = llm_briefing(url, site)
     print(f"[1B] Briefing: escopo={briefing['escopo']}, nicho='{briefing.get('nicho_principal')}', "
