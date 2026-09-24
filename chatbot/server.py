@@ -34,6 +34,7 @@ from mercadopago_client import (
     mp_configured,
     mp_public_key,
 )
+import usage_db
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
@@ -59,7 +60,12 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.4.0"
+
+try:
+    usage_db.init_db()
+except Exception as _e:
+    print(f"[usage_db] init falhou: {_e}")
 
 REQUIRED_LIVE_KEYS = (
     "OPENROUTER_API_KEY",
@@ -99,12 +105,38 @@ jobs: dict[str, Job] = {}
 def emit(job: Job, event_type: str, **payload: Any) -> None:
     msg = {"type": event_type, "job_id": job.job_id, "ts": time.time(), **payload}
     job.queue.put(msg)
+    try:
+        if event_type == "log":
+            usage_db.append_log(job.job_id, str(payload.get("line") or ""))
+        elif event_type == "pipeline_meta":
+            usage_db.set_run_mode(job.job_id, str(payload.get("mode") or ""))
+        elif event_type == "error":
+            usage_db.append_log(
+                job.job_id,
+                str(payload.get("message") or "erro"),
+                level="error",
+                source="worker",
+            )
+    except Exception:
+        pass
 
 
 def set_step(job: Job, step_id: str, state: str, detail: str = "") -> None:
     job.current_step = step_id
     job.steps[step_id] = {"state": state, "detail": detail, "at": time.time()}
     emit(job, "step", step_id=step_id, state=state, detail=detail, steps=job.steps)
+    try:
+        meta = next((s for s in (STEP_DEFS + EXTRA_STEP_DEFS) if s["id"] == step_id), None)
+        usage_db.upsert_step(
+            job.job_id,
+            step_id,
+            state,
+            detail,
+            step_index=int(meta["index"]) if meta else None,
+            error_message=detail if state == "error" else "",
+        )
+    except Exception:
+        pass
 
 
 def _worker(job: Job) -> None:
@@ -127,11 +159,20 @@ def _worker(job: Job) -> None:
                 set_step=_set_step,
                 demo=bool(job.parsed.demo),
                 preferred_competitors=job.parsed.competitors,
+                run_id=job.job_id,
             )
         else:
-            report = run_pipeline(job.parsed, _emit, _set_step)
+            report = run_pipeline(job.parsed, _emit, _set_step, run_id=job.job_id)
         job.report = report
         job.status = "done"
+        try:
+            usage_db.finish_run(
+                job.job_id,
+                status="done",
+                report_summary=usage_db.summarize_report(report if isinstance(report, dict) else None),
+            )
+        except Exception:
+            pass
         emit(job, "complete", report=report, progressive=True, extras=(kind == "extras"))
     except Exception as e:
         job.status = "error"
@@ -142,6 +183,16 @@ def _worker(job: Job) -> None:
                 "detail": str(e),
                 "at": time.time(),
             }
+            try:
+                usage_db.upsert_step(
+                    job.job_id, job.current_step, "error", str(e), error_message=str(e)
+                )
+            except Exception:
+                pass
+        try:
+            usage_db.finish_run(job.job_id, status="error", error_message=str(e))
+        except Exception:
+            pass
         emit(job, "error", message=str(e), steps=job.steps)
 
 
@@ -244,6 +295,21 @@ def chat():
     for s in STEP_DEFS:
         job.steps[s["id"]] = {"state": "pending", "detail": "", "at": 0}
     jobs[job_id] = job
+    try:
+        usage_db.create_run(
+            run_id=job_id,
+            kind="free",
+            company=parsed.company or "",
+            slug=parsed.slug or "",
+            url=parsed.url or "",
+            demo=bool(parsed.demo),
+            preferred_competitors=parsed.competitors or [],
+            user_agent=request.headers.get("User-Agent", "")[:300],
+            ip=(request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:80],
+        )
+        usage_db.append_log(job_id, f"Uso iniciado: {parsed.company or parsed.slug} ({parsed.url or 'sem url'})")
+    except Exception as e:
+        print(f"[usage_db] create_run falhou: {e}")
 
     threading.Thread(target=_worker, args=(job,), daemon=True).start()
 
@@ -486,6 +552,21 @@ def start_extras():
     for s in EXTRA_STEP_DEFS:
         job.steps[s["id"]] = {"state": "pending", "detail": "", "at": 0}
     jobs[job_id] = job
+    try:
+        usage_db.create_run(
+            run_id=job_id,
+            kind="extras",
+            company=company,
+            slug=slug,
+            url="",
+            demo=demo,
+            parent_run_id=job_id_src,
+            user_agent=request.headers.get("User-Agent", "")[:300],
+            ip=(request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:80],
+        )
+        usage_db.append_log(job_id, f"Canais extra iniciados: {company} / {slug}")
+    except Exception as e:
+        print(f"[usage_db] create_run extras falhou: {e}")
     threading.Thread(target=_worker, args=(job,), daemon=True).start()
 
     return jsonify({
@@ -562,7 +643,87 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+def _admin_authorized() -> bool:
+    expected = (os.environ.get("ADMIN_DASHBOARD_TOKEN") or "").strip()
+    if not expected:
+        # Sem token: libera so em localhost (dev)
+        return (request.remote_addr or "") in ("127.0.0.1", "::1")
+    token = (
+        request.args.get("token")
+        or request.headers.get("X-Admin-Token")
+        or request.cookies.get("radar_admin_token")
+        or ""
+    ).strip()
+    return token == expected
+
+
+@app.get("/admin")
+def admin_dashboard():
+    if not _admin_authorized():
+        return (
+            "<h1>403</h1><p>Defina ADMIN_DASHBOARD_TOKEN no Render e acesse "
+            "<code>/admin?token=SEU_TOKEN</code>.</p>",
+            403,
+        )
+    resp = send_from_directory(STATIC_DIR, "admin.html")
+    resp.headers["Cache-Control"] = "no-store"
+    token = (request.args.get("token") or "").strip()
+    if token:
+        resp.set_cookie("radar_admin_token", token, httponly=True, samesite="Lax")
+    return resp
+
+
+@app.get("/api/admin/runs")
+def admin_list_runs():
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    limit = min(int(request.args.get("limit") or 50), 200)
+    offset = max(int(request.args.get("offset") or 0), 0)
+    return jsonify({"runs": usage_db.list_runs(limit=limit, offset=offset)})
+
+
+@app.get("/api/admin/runs/<run_id>")
+def admin_get_run(run_id: str):
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    run = usage_db.get_run(run_id)
+    if not run:
+        return jsonify({"error": "Run nao encontrado"}), 404
+    return jsonify({
+        "run": run,
+        "steps": usage_db.get_run_steps(run_id),
+        "artifacts": usage_db.get_run_artifacts(run_id),
+        "logs": usage_db.get_run_logs(run_id, limit=800),
+    })
+
+
+@app.get("/api/admin/runs/<run_id>/file")
+def admin_get_file(run_id: str):
+    """Serve artifact file by id or relative path under data/runs/<id>/."""
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    art_id = request.args.get("artifact_id")
+    rel = (request.args.get("path") or "").strip()
+    path: Optional[Path] = None
+    if art_id:
+        for a in usage_db.get_run_artifacts(run_id):
+            if str(a.get("id")) == str(art_id):
+                path = Path(a["path"])
+                break
+    elif rel:
+        # only allow under runs/<run_id>
+        candidate = (usage_db.RUNS_DIR / run_id / rel).resolve()
+        root = (usage_db.RUNS_DIR / run_id).resolve()
+        if str(candidate).startswith(str(root)) and candidate.exists():
+            path = candidate
+    if not path or not path.exists():
+        return jsonify({"error": "Arquivo nao encontrado"}), 404
+    return send_from_directory(str(path.parent), path.name, as_attachment=True)
+
+
 if __name__ == "__main__":
+    usage_db.init_db()
     port = int(os.environ.get("PORT", "8766"))
     print(f"Radar da Concorrencia -> http://127.0.0.1:{port}  DEMO_ONLY={DEMO_ONLY} live_keys={_live_keys_ready()}")
+    print(f"Admin dashboard -> http://127.0.0.1:{port}/admin")
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

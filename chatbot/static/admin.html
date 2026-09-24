@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radar Admin — Usos & Logs</title>
+<style>
+:root{--bg:#0f1115;--panel:#171a21;--panel2:#1e2330;--border:#2a3142;--text:#e8eaef;--muted:#8b93a7;--accent:#6366f1;--ok:#10b981;--err:#ef4444;--warn:#f59e0b;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:5}
+header h1{font-size:15px;font-weight:700}
+header .meta{margin-left:auto;font-size:12px;color:var(--muted);font-family:var(--mono)}
+button,a.btn{border:1px solid var(--border);background:var(--panel2);color:var(--text);padding:7px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none}
+button:hover,a.btn:hover{border-color:var(--accent)}
+.layout{display:grid;grid-template-columns:360px 1fr;min-height:calc(100vh - 52px)}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+.list{border-right:1px solid var(--border);overflow:auto;max-height:calc(100vh - 52px)}
+.item{padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer}
+.item:hover,.item.active{background:var(--panel2)}
+.item .t{font-weight:600;font-size:13px;margin-bottom:4px}
+.item .s{font-size:11px;color:var(--muted);font-family:var(--mono);display:flex;gap:8px;flex-wrap:wrap}
+.badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase}
+.b-done{background:rgba(16,185,129,.15);color:var(--ok)}
+.b-error{background:rgba(239,68,68,.15);color:var(--err)}
+.b-running{background:rgba(245,158,11,.15);color:var(--warn)}
+.b-pending{background:rgba(139,147,167,.15);color:var(--muted)}
+.detail{padding:18px 20px;overflow:auto;max-height:calc(100vh - 52px)}
+.empty{color:var(--muted);padding:40px;text-align:center}
+h2{font-size:18px;margin-bottom:6px}
+.sub{color:var(--muted);font-size:12px;font-family:var(--mono);margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px}
+.card .k{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.card .v{font-size:18px;font-weight:700;margin-top:4px;font-family:var(--mono)}
+section{margin-bottom:22px}
+section h3{font-size:13px;margin-bottom:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.logbox{background:#0b0d11;border:1px solid var(--border);border-radius:10px;padding:12px;max-height:360px;overflow:auto;font-family:var(--mono);font-size:11px;line-height:1.5;white-space:pre-wrap}
+.log-error{color:var(--err)}.log-warn{color:var(--warn)}
+.arts a{color:#a5b4fc;margin-right:10px}
+.errbox{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);color:#fecaca;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Radar Admin — Usos & Logs</h1>
+  <button type="button" id="btnRefresh">Atualizar</button>
+  <div class="meta" id="hdrMeta">carregando…</div>
+</header>
+<div class="layout">
+  <aside class="list" id="runList"></aside>
+  <main class="detail" id="detail"><div class="empty">Selecione um uso à esquerda</div></main>
+</div>
+<script>
+const qs = new URLSearchParams(location.search);
+const token = qs.get('token') || '';
+const api = (path) => fetch(path + (token ? (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token) : ''));
+
+function fmtTs(ts) {
+  if (!ts) return '—';
+  const d = new Date(Number(ts) * 1000);
+  return d.toLocaleString('pt-BR');
+}
+function fmtMs(ms) {
+  if (ms == null) return '—';
+  if (ms < 1000) return ms + ' ms';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + 's';
+  return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+}
+function badge(status) {
+  const s = (status || '').toLowerCase();
+  const cls = s === 'done' ? 'b-done' : (s === 'error' ? 'b-error' : (s === 'running' ? 'b-running' : 'b-pending'));
+  return `<span class="badge ${cls}">${s || '?'}</span>`;
+}
+
+let selectedId = null;
+
+async function loadRuns() {
+  const res = await api('/api/admin/runs?limit=80');
+  if (!res.ok) {
+    document.getElementById('runList').innerHTML = `<div class="empty">Erro ${res.status}. Use /admin?token=...</div>`;
+    return;
+  }
+  const data = await res.json();
+  const runs = data.runs || [];
+  document.getElementById('hdrMeta').textContent = runs.length + ' usos recentes';
+  const el = document.getElementById('runList');
+  if (!runs.length) {
+    el.innerHTML = '<div class="empty">Nenhum uso registrado ainda</div>';
+    return;
+  }
+  el.innerHTML = runs.map(r => `
+    <div class="item ${r.id === selectedId ? 'active' : ''}" data-id="${r.id}">
+      <div class="t">${esc(r.company || r.slug || r.id)} ${badge(r.status)}</div>
+      <div class="s">
+        <span>${esc(r.kind || 'free')}</span>
+        <span>${esc(r.mode || '—')}</span>
+        <span>${fmtTs(r.started_at)}</span>
+        <span>${fmtMs(r.duration_ms)}</span>
+      </div>
+    </div>`).join('');
+  el.querySelectorAll('.item').forEach(node => {
+    node.addEventListener('click', () => openRun(node.dataset.id));
+  });
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function openRun(id) {
+  selectedId = id;
+  document.querySelectorAll('.item').forEach(n => n.classList.toggle('active', n.dataset.id === id));
+  const res = await api('/api/admin/runs/' + encodeURIComponent(id));
+  const detail = document.getElementById('detail');
+  if (!res.ok) {
+    detail.innerHTML = `<div class="empty">Falha ao carregar run</div>`;
+    return;
+  }
+  const { run, steps, artifacts, logs } = await res.json();
+  let summary = {};
+  try { summary = JSON.parse(run.report_summary_json || '{}') || {}; } catch(e) {}
+
+  detail.innerHTML = `
+    <h2>${esc(run.company || run.slug || run.id)}</h2>
+    <div class="sub">${esc(run.id)} · ${esc(run.url || '')} · ${badge(run.status)} · mode ${esc(run.mode || '—')}</div>
+    ${run.error_message ? `<div class="errbox">${esc(run.error_message)}</div>` : ''}
+    <div class="grid">
+      <div class="card"><div class="k">Duração</div><div class="v">${fmtMs(run.duration_ms)}</div></div>
+      <div class="card"><div class="k">Início</div><div class="v" style="font-size:13px">${fmtTs(run.started_at)}</div></div>
+      <div class="card"><div class="k">Tipo</div><div class="v" style="font-size:14px">${esc(run.kind)}</div></div>
+      <div class="card"><div class="k">Concorrentes UI</div><div class="v">${summary.competitors_ui ?? '—'}</div></div>
+    </div>
+
+    <section>
+      <h3>Etapas</h3>
+      <table>
+        <thead><tr><th>Etapa</th><th>Status</th><th>Tempo</th><th>Empresas</th><th>Alto</th><th>Médio</th><th>UI</th><th>Tier</th><th>Detalhe</th></tr></thead>
+        <tbody>
+          ${(steps || []).map(s => `
+            <tr>
+              <td>${esc(s.step_id)}</td>
+              <td>${badge(s.state)}</td>
+              <td>${fmtMs(s.duration_ms)}</td>
+              <td>${s.companies_found ?? '—'}</td>
+              <td>${s.altos_found ?? '—'}</td>
+              <td>${s.medios_found ?? '—'}</td>
+              <td>${s.competitors_count_ui ?? '—'}</td>
+              <td>${esc(s.display_tier || '—')}</td>
+              <td>${esc(s.detail || s.error_message || '')}</td>
+            </tr>`).join('') || '<tr><td colspan="9">Sem etapas</td></tr>'}
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h3>Artefatos (dados da pesquisa)</h3>
+      <div class="arts">
+        ${(artifacts || []).map(a => {
+          const href = '/api/admin/runs/' + encodeURIComponent(id) + '/file?artifact_id=' + a.id + (token ? '&token=' + encodeURIComponent(token) : '');
+          return `<a href="${href}" target="_blank" rel="noopener">${esc(a.kind)} (${esc((a.meta_json && JSON.parse(a.meta_json||'{}').name) || a.path.split(/[/\\\\]/).pop())})</a>`;
+        }).join('') || '<span style="color:var(--muted)">Nenhum artefato ainda</span>'}
+      </div>
+    </section>
+
+    <section>
+      <h3>Logs de execução</h3>
+      <div class="logbox">${(logs || []).map(l => {
+        const cls = l.level === 'error' ? 'log-error' : (l.level === 'warn' ? 'log-warn' : '');
+        return `<div class="${cls}">[${fmtTs(l.ts)}] ${esc(l.message)}</div>`;
+      }).join('') || 'Sem logs'}</div>
+    </section>
+  `;
+}
+
+document.getElementById('btnRefresh').addEventListener('click', loadRuns);
+loadRuns();
+setInterval(loadRuns, 15000);
+</script>
+</body>
+</html>

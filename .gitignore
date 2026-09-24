@@ -31,3 +31,10 @@ radar_v2_*.html
 
 *.log
 .pytest_cache/
+
+# Runtime data
+chatbot/data/usage.sqlite*
+chatbot/data/runs/
+chatbot/data/orders/
+chatbot/data/leads.jsonl
+

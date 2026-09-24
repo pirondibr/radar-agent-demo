@@ -15,6 +15,11 @@ from report_builder import (
     build_report_from_xlsx,
 )
 
+try:
+    import usage_db
+except ImportError:
+    usage_db = None  # type: ignore
+
 CHATBOT_DIR = Path(__file__).resolve().parent
 RADAR_ROOT = CHATBOT_DIR.parent
 FINAL_DIR = RADAR_ROOT / "scripts"
@@ -272,6 +277,93 @@ def _emit_progress(
     )
 
 
+def _record_competitors_step(run_id: Optional[str], early: dict, step_id: str = "briefing_concorrentes") -> None:
+    if not run_id or not usage_db:
+        return
+    try:
+        meta = early.get("filter_meta") or {}
+        stats = early.get("competitors_stats") or meta.get("counts") or {}
+        usage_db.upsert_step(
+            run_id,
+            step_id,
+            "done",
+            f"{early.get('competitors_count', 0)} concorrentes na UI "
+            f"(tier={early.get('display_tier') or meta.get('display_tier')})",
+            companies_found=int(stats.get("total") or meta.get("companies_found") or 0),
+            altos_found=int(stats.get("alto") or meta.get("altos_found") or 0),
+            medios_found=int(stats.get("medio") or meta.get("medios_found") or 0),
+            baixos_found=int(stats.get("baixo") or meta.get("baixos_found") or 0),
+            competitors_count_ui=int(early.get("competitors_count") or 0),
+            display_tier=str(early.get("display_tier") or meta.get("display_tier") or ""),
+            meta={
+                "note": early.get("competitors_note") or "",
+                "stats": stats,
+            },
+        )
+        raw = early.get("competitors_raw") or []
+        if raw:
+            # serializable snapshot
+            serial = []
+            for c in raw:
+                if isinstance(c, dict):
+                    serial.append({
+                        k: c.get(k)
+                        for k in (
+                            "domain", "name", "similaridade", "perfil", "fonte",
+                            "nicho", "url", "is_client",
+                        )
+                    })
+            usage_db.save_json_artifact(
+                run_id,
+                "competitors_raw.json",
+                serial,
+                kind="competitors_raw",
+                step_id=step_id,
+                meta={"count": len(serial)},
+            )
+        usage_db.save_json_artifact(
+            run_id,
+            "competitors_ui.json",
+            early.get("competitors") or [],
+            kind="competitors_ui",
+            step_id=step_id,
+        )
+        if early.get("competitors_note"):
+            usage_db.append_log(
+                run_id,
+                early["competitors_note"],
+                level="warn",
+                source="competitors",
+            )
+    except Exception as e:
+        try:
+            usage_db.append_log(run_id, f"Falha ao gravar concorrentes: {e}", level="error")
+        except Exception:
+            pass
+
+
+def _record_xlsx_artifacts(run_id: Optional[str], slug: str, step_id: str) -> None:
+    if not run_id or not usage_db:
+        return
+    try:
+        for kind, finder in (
+            ("briefing_xlsx", find_briefing_xlsx),
+            ("concorrentes_xlsx", find_concorrentes_xlsx),
+            ("metricas_xlsx", find_metricas_xlsx),
+        ):
+            path = finder(slug)
+            if path and path.exists():
+                usage_db.add_artifact(
+                    run_id,
+                    kind=kind,
+                    path=str(path),
+                    step_id=step_id,
+                    meta={"name": path.name},
+                )
+    except Exception:
+        pass
+
+
 def _emit_section(emit: EmitFn, section: str, report: dict, client: str = "") -> None:
     """Envia pedaco do relatorio para a UI renderizar na hora."""
     payload: dict = {"section": section, "client": report.get("client") or client}
@@ -287,6 +379,9 @@ def _emit_section(emit: EmitFn, section: str, report: dict, client: str = "") ->
             },
             "competitors": report.get("competitors") or [],
             "competitors_count": report.get("competitors_count") or 0,
+            "competitors_note": report.get("competitors_note") or "",
+            "display_tier": report.get("display_tier") or "",
+            "competitors_stats": report.get("competitors_stats") or {},
         }
     elif section == "briefing":
         payload["data"] = report.get("briefing") or {
@@ -365,6 +460,7 @@ def run_demo_pipeline(
     parsed: ParsedInput,
     emit: EmitFn,
     set_step: EmitFn,
+    run_id: Optional[str] = None,
 ) -> dict:
     slug = parsed.slug or "chatguru"
     xlsx = find_metricas_xlsx(slug) if slug != "chatguru" else DEMO_XLSX
@@ -389,6 +485,8 @@ def run_demo_pipeline(
         client_name=parsed.company or slug,
         preferred_competitors=parsed.competitors,
     )
+    _record_competitors_step(run_id, report)
+    _record_xlsx_artifacts(run_id, slug, "briefing_concorrentes")
     return _reveal_from_report(report, emit, set_step, mode)
 
 
@@ -396,6 +494,7 @@ def run_live_pipeline(
     parsed: ParsedInput,
     emit: EmitFn,
     set_step: EmitFn,
+    run_id: Optional[str] = None,
 ) -> dict:
     import os
 
@@ -441,6 +540,8 @@ def run_live_pipeline(
             client_name=client_name,
             preferred_competitors=parsed.competitors,
         )
+        _record_competitors_step(run_id, report)
+        _record_xlsx_artifacts(run_id, slug, "briefing_concorrentes")
         return _reveal_from_report(report, emit, set_step, mode)
 
     mode = "live"
@@ -482,9 +583,13 @@ def run_live_pipeline(
         fallback_url=url,
     )
     _emit_section(emit, "briefing_concorrentes", early, client_name)
+    _record_competitors_step(run_id, early)
+    _record_xlsx_artifacts(run_id, slug, "briefing_concorrentes")
     _emit_progress(
         emit, set_step, "briefing_concorrentes", "done",
-        f"{early.get('competitors_count', 0)} concorrentes mapeados", mode,
+        f"{early.get('competitors_count', 0)} concorrentes mapeados"
+        + (f" ({early.get('display_tier')})" if early.get("display_tier") else ""),
+        mode,
     )
 
     # --- Etapa 2/4: somente Google Ads ---
@@ -535,14 +640,20 @@ def run_live_pipeline(
     )
     _emit_section(emit, "brand", report, client_name)
     _emit_progress(emit, set_step, "brand", "done", "Marca pronta", mode)
+    _record_xlsx_artifacts(run_id, slug, "brand")
 
     return report
 
 
-def run_pipeline(parsed: ParsedInput, emit: EmitFn, set_step: EmitFn) -> dict:
+def run_pipeline(
+    parsed: ParsedInput,
+    emit: EmitFn,
+    set_step: EmitFn,
+    run_id: Optional[str] = None,
+) -> dict:
     if parsed.demo:
-        return run_demo_pipeline(parsed, emit, set_step)
-    return run_live_pipeline(parsed, emit, set_step)
+        return run_demo_pipeline(parsed, emit, set_step, run_id=run_id)
+    return run_live_pipeline(parsed, emit, set_step, run_id=run_id)
 
 
 def run_extras_pipeline(
@@ -553,6 +664,7 @@ def run_extras_pipeline(
     set_step: EmitFn,
     demo: bool = False,
     preferred_competitors: Optional[list[str]] = None,
+    run_id: Optional[str] = None,
 ) -> dict:
     """Canais extra: Meta → LinkedIn → Instagram → YouTube (sem TikTok)."""
     slug = slug or "chatguru"

@@ -299,19 +299,91 @@ def prioritize_competitors(
 COMPETITORS_DISPLAY_LIMIT = 10
 
 
-def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Frontend: so cliente + concorrentes Alto, no maximo 10 Altos."""
+def similarity_counts(competitors: list[dict[str, Any]]) -> dict[str, int]:
+    """Contagem por similaridade (exclui cliente)."""
+    counts = {"alto": 0, "medio": 0, "baixo": 0, "other": 0, "total": 0}
+    for c in competitors:
+        if c.get("is_client"):
+            continue
+        counts["total"] += 1
+        sim = str(c.get("similaridade") or "").strip().lower()
+        if sim == "alto":
+            counts["alto"] += 1
+        elif sim in ("medio", "médio"):
+            counts["medio"] += 1
+        elif sim == "baixo":
+            counts["baixo"] += 1
+        else:
+            counts["other"] += 1
+    return counts
+
+
+def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Cliente + concorrentes para a UI.
+
+    Prefere Alto. Se nao houver nenhum Alto, faz fallback para Medio e depois
+    qualquer concorrente (inclui preferidos), para nao deixar a lista vazia.
+    Retorna (lista, meta) com display_tier e contagens.
+    """
     client_rows = [c for c in competitors if c.get("is_client")]
-    altos = [
-        c for c in competitors
-        if (not c.get("is_client"))
-        and str(c.get("similaridade") or "").strip().lower() == "alto"
-    ][:COMPETITORS_DISPLAY_LIMIT]
+    non_client = [c for c in competitors if not c.get("is_client")]
+    counts = similarity_counts(competitors)
+
+    def _tier(sim: str) -> list[dict[str, Any]]:
+        sim_l = sim.lower()
+        return [
+            c for c in non_client
+            if str(c.get("similaridade") or "").strip().lower().replace("é", "e") == sim_l
+        ]
+
+    altos = _tier("alto")[:COMPETITORS_DISPLAY_LIMIT]
+    display_tier = "alto"
+    note = ""
+    chosen = altos
+    if not chosen:
+        medios = _tier("medio")[:COMPETITORS_DISPLAY_LIMIT]
+        if medios:
+            chosen = medios
+            display_tier = "medio"
+            note = (
+                "Nenhum concorrente classificado como Alta similaridade. "
+                "Mostrando concorrentes de similaridade média."
+            )
+        else:
+            preferred = [c for c in non_client if c.get("preferred")][:COMPETITORS_DISPLAY_LIMIT]
+            if preferred:
+                chosen = preferred
+                display_tier = "preferred"
+                note = (
+                    "Nenhum concorrente Alto/Médio. "
+                    "Mostrando concorrentes sugeridos / encontrados."
+                )
+            elif non_client:
+                chosen = non_client[:COMPETITORS_DISPLAY_LIMIT]
+                display_tier = "any"
+                note = (
+                    "Nenhum concorrente Alto/Médio. "
+                    f"Mostrando os {len(chosen)} concorrentes encontrados na pesquisa."
+                )
+            else:
+                display_tier = "none"
+                note = "A pesquisa não encontrou concorrentes para este site."
+
     out: list[dict[str, Any]] = []
     if client_rows:
         out.append(client_rows[0])
-    out.extend(altos)
-    return out
+    out.extend(chosen)
+    meta = {
+        "display_tier": display_tier,
+        "competitors_note": note,
+        "counts": counts,
+        "companies_found": counts["total"],
+        "altos_found": counts["alto"],
+        "medios_found": counts["medio"],
+        "baixos_found": counts["baixo"],
+        "competitors_count_ui": len(chosen),
+    }
+    return out, meta
 
 
 def _build_ads_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict[str, str]:
@@ -711,7 +783,8 @@ def build_report_from_xlsx(
                 for p in preferred
             ),
         })
-    competitors = filter_competitors_for_display(competitors)
+    competitors_all = list(competitors)
+    competitors, filter_meta = filter_competitors_for_display(competitors)
 
     # Google Ads ranking, include client even with 0 ads
     ads_entities = [
@@ -920,6 +993,11 @@ def build_report_from_xlsx(
         },
         "competitors": competitors,
         "competitors_count": len([c for c in competitors if not c.get("is_client")]),
+        "competitors_note": filter_meta.get("competitors_note") or "",
+        "display_tier": filter_meta.get("display_tier") or "",
+        "competitors_stats": filter_meta.get("counts") or {},
+        "competitors_raw": competitors_all,
+        "filter_meta": filter_meta,
         "google_ads": {
             "total_invest_fmt": _fmt_money(total_invest) if total_invest else "R$ 0",
             "total_ads": total_ads,
@@ -1092,12 +1170,17 @@ def load_competitors_xlsx(
                 for p in preferred
             ),
         })
-    competitors = filter_competitors_for_display(competitors)
+    competitors, filter_meta = filter_competitors_for_display(competitors)
 
     return {
         "client": client_label,
         "competitors": competitors,
         "competitors_count": len([c for c in competitors if not c.get("is_client")]),
+        "competitors_note": filter_meta.get("competitors_note") or "",
+        "display_tier": filter_meta.get("display_tier") or "",
+        "competitors_stats": filter_meta.get("counts") or {},
+        "competitors_raw": ranked,  # lista completa antes do filtro UI
+        "filter_meta": filter_meta,
     }
 
 
@@ -1125,4 +1208,9 @@ def build_early_briefing_competitors(
         "briefing": briefing,
         "competitors": comps.get("competitors") or [],
         "competitors_count": comps.get("competitors_count") or 0,
+        "competitors_note": comps.get("competitors_note") or "",
+        "display_tier": comps.get("display_tier") or "",
+        "competitors_stats": comps.get("competitors_stats") or {},
+        "competitors_raw": comps.get("competitors_raw") or [],
+        "filter_meta": comps.get("filter_meta") or {},
     }
