@@ -42,31 +42,32 @@ def mp_public_key() -> str:
 
 
 def mp_sandbox_mode() -> bool:
-    """True when credentials / env indicate a test integration."""
+    """True when we treat the integration as test (for logging / UI hints)."""
     flag = os.environ.get("MERCADOPAGO_SANDBOX", "").strip().lower()
     if flag in ("1", "true", "yes"):
         return True
     if flag in ("0", "false", "no"):
         return False
     token = mp_access_token().upper()
-    # Classic test tokens; APP_USR alone is ambiguous (prod and test both use it)
     return token.startswith("TEST-")
 
 
 def mp_use_sandbox_init_point() -> bool:
-    """Which checkout URL to open.
+    """Choose checkout host.
 
-    - MERCADOPAGO_SANDBOX=1 → always sandbox_init_point (URL sandbox.mercadopago.com)
-    - Token TEST-... → sandbox_init_point
-    - Token APP_USR-... (credenciais de teste do painel) → init_point
-      (URL parece producao, mas a preferencia e de teste — e o fluxo oficial atual)
+    IMPORTANT (Mercado Pago 2024+):
+    - Credenciais de teste atuais usam Access Token APP_USR-...
+      Com esses tokens, abrir sandbox_init_point causa ERR_TOO_MANY_REDIRECTS
+      ou "Ops, ocorreu um erro". O fluxo oficial e usar init_point
+      (URL www.mercadopago.com.br) + login do comprador de teste.
+    - Apenas tokens classicos TEST-... devem usar sandbox_init_point.
+    - MERCADOPAGO_SANDBOX=1 NAO forca mais sandbox host se o token for APP_USR.
     """
-    flag = os.environ.get("MERCADOPAGO_SANDBOX", "").strip().lower()
-    if flag in ("1", "true", "yes"):
+    token = mp_access_token().upper()
+    if token.startswith("TEST-"):
         return True
-    if flag in ("0", "false", "no"):
-        return False
-    return mp_access_token().upper().startswith("TEST-")
+    # APP_USR (teste ou producao): sempre init_point
+    return False
 
 
 def mp_configured() -> bool:
