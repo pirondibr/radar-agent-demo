@@ -192,7 +192,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.18';
+const APP_VERSION = '1.5.19';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
@@ -1549,12 +1549,9 @@ async function sendMessage() {
   return;
  }
 
- // Lead: dispara no envio do site (nao espera a API), para o Testar eventos do Meta
+ // Lead vai pelo servidor (Conversions API) em /api/chat — nao depende do browser
  if (looksLikeSiteAnalysis(text)) {
-  trackMeta('Lead', {
-   content_name: 'site_analysis_request',
-   content_category: 'radar_analysis',
-  });
+  console.info('[Meta] Lead sera enviado pelo servidor (CAPI) ao iniciar a analise.');
  }
 
  setBusy(true);
@@ -1571,6 +1568,12 @@ async function sendMessage() {
  append(`<div class="q-block reveal"><div class="err-card">${esc(data.error || 'Erro')}</div></div>`);
  setBusy(false);
  return;
+ }
+ if (data.meta_lead) {
+  console.info('[Meta CAPI Lead]', data.meta_lead);
+  if (data.meta_lead.skipped) {
+   console.warn('[Meta CAPI] Configure META_CAPI_ACCESS_TOKEN no Render.');
+  }
  }
  jobId = data.job_id;
  stepDefs = data.steps || stepDefs;

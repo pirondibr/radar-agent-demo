@@ -40,7 +40,7 @@ from mercadopago_client import (
     mp_configured,
     mp_public_key,
 )
-from meta_capi import capi_configured, send_capi_event
+from meta_capi import capi_configured, send_capi_event, track_lead_from_request
 import usage_db
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -67,7 +67,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.18"
+APP_VERSION = "1.5.19"
 
 try:
     usage_db.init_db()
@@ -379,6 +379,23 @@ def chat():
 
     threading.Thread(target=_worker, args=(job,), daemon=True).start()
 
+    # Lead via Conversions API (servidor) — nao depende do Pixel no browser
+    meta_lead = None
+    try:
+        meta_lead = track_lead_from_request(
+            company=parsed.company or "",
+            slug=parsed.slug or "",
+            url=parsed.url or "",
+            demo=bool(parsed.demo),
+            request_obj=request,
+            event_source_url=(
+                os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/") + "/"
+            ),
+        )
+    except Exception as e:
+        print(f"[meta_capi] Lead falhou: {e}", flush=True)
+        meta_lead = {"ok": False, "error": str(e)}
+
     return jsonify({
         "job_id": job_id,
         "parsed": {
@@ -391,6 +408,7 @@ def chat():
         "steps": STEP_DEFS,
         "ack": _ack_message(parsed),
         "demo_only": DEMO_ONLY,
+        "meta_lead": meta_lead,
     })
 
 
