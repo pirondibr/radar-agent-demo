@@ -440,14 +440,38 @@ def build_3period_traffic(client_url: str, competitors: list,
                           client_profile: str,
                           max_competitors: int = MAX_COMPETITORS_FOR_TRAFFIC) -> dict:
     cli = normalize_domain(client_url)
-    # so concorrentes Alto vao para o relatorio de trafego (Medio/Baixo nao)
-    alto = [c for c in competitors if c.get("similaridade") == "Alto"][:max_competitors]
+
+    def _sim_key(c: dict) -> str:
+        return (c.get("similaridade") or "").strip().lower().replace("é", "e")
+
+    # Prefer Alto, completa com Medio ate max_competitors (mesmo top da UI)
+    picked: list[dict] = []
+    seen: set[str] = set()
+    for bucket in (
+        [c for c in competitors if _sim_key(c) == "alto"],
+        [c for c in competitors if _sim_key(c) == "medio"],
+    ):
+        for c in bucket:
+            if len(picked) >= max_competitors:
+                break
+            d = normalize_domain(c.get("domain") or "")
+            if not d or d == cli or d in seen:
+                continue
+            seen.add(d)
+            picked.append(c)
+        if len(picked) >= max_competitors:
+            break
 
     targets = [(cli, "cliente", client_profile)]
-    for c in alto:
+    for c in picked:
         targets.append((c["domain"], "concorrente", c.get("perfil", "—")))
 
-    print(f"[5] Trafego Semrush 4 periodos: cliente + {len(alto)} concorrente(s) Alto")
+    n_alto = sum(1 for c in picked if _sim_key(c) == "alto")
+    n_medio = sum(1 for c in picked if _sim_key(c) == "medio")
+    print(
+        f"[5] Trafego Semrush 4 periodos: cliente + {len(picked)} concorrente(s) "
+        f"(Alto={n_alto}, Medio={n_medio})"
+    )
 
     rows = []
     cur_dates, y1_dates, y2_dates, y3_dates = set(), set(), set(), set()

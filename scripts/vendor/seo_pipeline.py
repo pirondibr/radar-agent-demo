@@ -1143,9 +1143,9 @@ def _pick_trend_points(series: list) -> dict:
 
 
 def build_traffic_comparison(client_domain: str, similarity_rows: list,
-                              max_competitors: int = 3,
+                              max_competitors: int = 10,
                               client_profile: str = "—") -> dict:
-    """Etapa 7: pega ate N concorrentes Alto distintos da analise de similaridade
+    """Etapa 7: pega ate N concorrentes (Alto primeiro, depois Medio)
     e busca Semrush MonthlyTrend para CLIENTE + concorrentes.
 
     Retorna dict:
@@ -1161,26 +1161,34 @@ def build_traffic_comparison(client_domain: str, similarity_rows: list,
         }"""
     client = normalize_domain(client_domain)
 
-    # concorrentes Alto unicos preservando ordem de aparicao (top SERPs primeiro)
-    # e mapa de perfil por dominio (vindo da analise de similaridade)
+    def _sim_key(s: dict) -> str:
+        return (s.get("similaridade") or "").strip().lower().replace("é", "e")
+
+    # concorrentes unicos: Alto primeiro, completa com Medio
     seen_doms = set()
-    alto_doms = []
+    picked_doms = []
     profile_by_domain = {client: client_profile}
     for s in similarity_rows:
         d = normalize_domain(s.get("domain", ""))
         if d and d not in profile_by_domain and s.get("perfil"):
             profile_by_domain[d] = s.get("perfil")
-        if s.get("similaridade") != "Alto":
-            continue
-        if not d or d == client or d in seen_doms:
-            continue
-        seen_doms.add(d)
-        alto_doms.append(d)
-        if len(alto_doms) >= max_competitors:
+
+    for want in ("alto", "medio"):
+        for s in similarity_rows:
+            if _sim_key(s) != want:
+                continue
+            d = normalize_domain(s.get("domain", ""))
+            if not d or d == client or d in seen_doms:
+                continue
+            seen_doms.add(d)
+            picked_doms.append(d)
+            if len(picked_doms) >= max_competitors:
+                break
+        if len(picked_doms) >= max_competitors:
             break
 
-    targets = [(client, "cliente")] + [(d, "concorrente") for d in alto_doms]
-    print(f"[7] Comparativo de trafego SEO: cliente + {len(alto_doms)} concorrente(s) Alto")
+    targets = [(client, "cliente")] + [(d, "concorrente") for d in picked_doms]
+    print(f"[7] Comparativo de trafego SEO: cliente + {len(picked_doms)} concorrente(s) Alto/Medio")
     for d, role in targets:
         print(f"      - {role}: {d} ({profile_by_domain.get(d, '—')})")
 
@@ -2407,7 +2415,7 @@ def run(url: str):
     client_profile = classify_client_profile(url, site, briefing)
     print(f"[7] Cliente classificado como: {client_profile}")
     traffic_comparison = build_traffic_comparison(
-        url, similarity_rows, max_competitors=3, client_profile=client_profile,
+        url, similarity_rows, max_competitors=10, client_profile=client_profile,
     )
 
     xlsx_path = out_dir / f"relatorio-seo-{slug}.xlsx"

@@ -10,7 +10,7 @@ Roda os quatro modos em sequencia e produz UM UNICO XLSX com:
   Aba 4: Concorrentes Ads          (anunciantes patrocinados do Google Ads)
   Aba 5: Concorrentes LLM          (concorrentes diretos sugeridos por Gemini)
   Aba 6: Concorrentes Unificado    (dedupe entre as 4 fontes + coluna Fonte)
-  Aba 7: Trafego SEO Marca         (cliente + Alto unicos do unificado)
+  Aba 7: Trafego SEO Marca         (cliente + Alto/Medio do unificado)
 
 Uso:
     python find_concorrentes_all.py <nome_cliente> [modo]
@@ -968,8 +968,8 @@ def main():
         client_profile = "—"
     print(f"[6] Cliente: {client_profile}")
 
-    # 7) trafego Semrush (cliente + Alto unicos do merged)
-    print("\n[7] Trafego Semrush 3 periodos (cliente + Alto unicos):")
+    # 7) trafego Semrush (cliente + Alto/Medio do merged, ate traffic_limit)
+    print("\n[7] Trafego Semrush 3 periodos (cliente + Alto/Medio):")
     traffic = build_3period_traffic(client_url, merged, client_profile,
                                      max_competitors=mode_cfg.get("traffic_limit", 15))
 

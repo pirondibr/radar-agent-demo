@@ -1063,6 +1063,29 @@ def build_report_from_xlsx(
     competitors_all = list(competitors)
     competitors, filter_meta = filter_competitors_for_display(competitors)
 
+    # Dominios do mesmo top exibido (Alto+Medio ate 10) — SEO e Marca usam este recorte
+    display_domains = {
+        (c.get("domain") or "").strip().lower()
+        for c in competitors
+        if not c.get("is_client") and (c.get("domain") or "").strip()
+    }
+    sim_by_domain = {
+        (c.get("domain") or "").strip().lower(): (c.get("similaridade") or "")
+        for c in competitors
+        if (c.get("domain") or "").strip()
+    }
+
+    def _in_display_set(e: dict[str, Any]) -> bool:
+        if e.get("is_client"):
+            return True
+        return (e.get("domain") or "").strip().lower() in display_domains
+
+    def _row_sim(e: dict[str, Any]) -> str:
+        if e.get("is_client"):
+            return "Cliente"
+        dom = (e.get("domain") or "").strip().lower()
+        return sim_by_domain.get(dom) or (e.get("similaridade") or "") or "—"
+
     # Google Ads: cliente + quem anuncia + picks do usuario (mesmo com 0)
     ads_entities = [
         e for e in entities
@@ -1092,13 +1115,16 @@ def build_report_from_xlsx(
             "pct_fmt": f"{round(pct)}%",
             "url": _google_transparency_url(e.get("domain") or "", e.get("google_ads_url") or ""),
             "is_client": bool(e.get("is_client")),
+            "similaridade": _row_sim(e),
         })
 
-    # SEO ranking
-    seo_entities = [
-        e for e in entities
-        if (e.get("seo") or 0) > 0 or e.get("is_client") or _entity_is_user_pick(e)
-    ]
+    # SEO ranking: mesmo top 10 da lista de concorrentes (inclui trafego 0)
+    seo_entities = [e for e in entities if _in_display_set(e)]
+    if not seo_entities:
+        seo_entities = [
+            e for e in entities
+            if (e.get("seo") or 0) > 0 or e.get("is_client") or _entity_is_user_pick(e)
+        ]
     seo_rows_sorted = sorted(
         seo_entities,
         key=lambda x: (x.get("seo") or 0),
@@ -1125,13 +1151,16 @@ def build_report_from_xlsx(
             "growth_up": g is not None and g >= 0,
             "growth_hot": g is not None and g >= 100,
             "is_client": bool(e.get("is_client")),
+            "similaridade": _row_sim(e),
         })
 
-    # Brand Search ranking (Semrush Marca Atual)
-    brand_entities = [
-        e for e in entities
-        if (e.get("marca") or 0) > 0 or e.get("is_client") or _entity_is_user_pick(e)
-    ]
+    # Brand Search: mesmo top 10 (inclui marca 0)
+    brand_entities = [e for e in entities if _in_display_set(e)]
+    if not brand_entities:
+        brand_entities = [
+            e for e in entities
+            if (e.get("marca") or 0) > 0 or e.get("is_client") or _entity_is_user_pick(e)
+        ]
     brand_rows_sorted = sorted(
         brand_entities,
         key=lambda x: (x.get("marca") or 0),
@@ -1158,6 +1187,7 @@ def build_report_from_xlsx(
             "growth_up": g is not None and g >= 0,
             "growth_hot": g is not None and g >= 100,
             "is_client": bool(e.get("is_client")),
+            "similaridade": _row_sim(e),
         })
 
     ads_analysis = _build_ads_analysis(client_label, gads_table)
@@ -1207,6 +1237,7 @@ def build_report_from_xlsx(
                 "bar": max(bar, 1) if (val or 0) > 0 else 1,
                 "url": e.get(url_field) or "",
                 "is_client": bool(e.get("is_client")),
+                "similaridade": _row_sim(e),
             })
         leader = next((r["name"] for r in table if (r.get("value") or 0) > 0), None) or (
             table[0]["name"] if table else "—"
@@ -1265,6 +1296,7 @@ def build_report_from_xlsx(
             "pct": (ads_n / total_meta_ads * 100) if total_meta_ads else 0,
             "pct_fmt": ("%.1f%%" % ((ads_n / total_meta_ads * 100) if total_meta_ads and ads_n else 0)),
             "is_client": bool(e.get("is_client")),
+            "similaridade": _row_sim(e),
             "value": ads_n,
             "value_fmt": _fmt_int(ads_n),
             "bar": max(1, int(round(ads_n / max_meta * 100))) if ads_n else 1,
