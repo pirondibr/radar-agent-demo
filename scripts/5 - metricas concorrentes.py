@@ -66,7 +66,7 @@ from gerar_html_concorrentes import generate_html_from_xlsx  # noqa: E402
 
 NATIONAL_DIR = OUT_CONCORRENTES
 OUTPUT_DIR = OUT_METRICAS
-TOP_COMPETITORS = 5
+TOP_COMPETITORS = 10
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 SCRAPINGBEE_API_KEY = os.environ.get("SCRAPINGBEE_API_KEY", "").strip()
 SCRAPINGBEE_URL = "https://app.scrapingbee.com/api/v1/"
@@ -296,7 +296,7 @@ def load_top_alto_competitors(xlsx_path: Path, limit: int = TOP_COMPETITORS) -> 
             medios.append(item)
 
     out = altos[:limit]
-    # Se faltam Altos, completa com Medio ate o limite (minimo util: 5)
+    # Se faltam Altos, completa com Medio ate o limite (minimo util: 10)
     if len(out) < limit and medios:
         seen = {c["domain"] for c in out}
         for m in medios:

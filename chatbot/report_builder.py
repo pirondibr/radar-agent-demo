@@ -417,7 +417,7 @@ def prioritize_competitors(
 
 COMPETITORS_DISPLAY_LIMIT = 10
 # Se houver menos de N "Alto", completa com "Medio" ate este minimo.
-COMPETITORS_MIN_FILL = 5
+COMPETITORS_MIN_FILL = 10
 
 
 def similarity_counts(competitors: list[dict[str, Any]]) -> dict[str, int]:
@@ -471,7 +471,7 @@ def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[l
     note = ""
     chosen = list(altos)
 
-    # Completa ate COMPETITORS_MIN_FILL com Medio quando ha Altos, mas menos de 5
+    # Completa ate COMPETITORS_MIN_FILL com Medio quando ha Altos, mas menos de 10
     if altos and len(chosen) < COMPETITORS_MIN_FILL and medios_all:
         seen = {(c.get("domain") or "").lower() for c in chosen}
         filled = 0
