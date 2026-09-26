@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Radar da Concorrência | Consultor de Marketing</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '2289325455219613');
+fbq('track', 'PageView');
+</script>
+<!-- End Meta Pixel Code -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#fafafa;--surface:#fff;--surface-2:#f3f3f6;--surface-3:#eaeaef;--border:#e0e0e6;--text:#111;--text-2:#555568;--text-3:#8c8ca0;--accent:#4f46e5;--accent-2:#6366f1;--accent-bg:rgba(79,70,229,.05);--accent-bg2:rgba(79,70,229,.1);--green:#059669;--green-bg:rgba(5,150,105,.06);--red:#dc2626;--red-bg:rgba(220,38,38,.05);--amber:#b45309;--amber-bg:rgba(180,83,9,.06);--blue:#2563eb;--blue-bg:rgba(37,99,235,.06);--teal:#0d9488;--teal-bg:rgba(13,148,136,.05);--violet:#7c3aed;--violet-bg:rgba(124,58,237,.05);--pink:#c026d3;--pink-bg:rgba(192,38,211,.05);--mono:'JetBrains Mono',monospace;--font:'Inter',system-ui,sans-serif;--radius:12px;--shadow:0 1px 4px rgba(0,0,0,.04)}
@@ -151,6 +165,10 @@ body.video-mode .main{padding-bottom:24px}
 </style>
 </head>
 <body>
+<!-- Meta Pixel noscript -->
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
+/></noscript>
 <div class="top">
  <div class="top-logo"><div class="top-mark">R</div><div class="top-name">Radar da Concorrência</div><span class="top-version" id="appVersion">v1.5.1</span></div>
  <div class="top-sep"></div>
@@ -174,7 +192,7 @@ body.video-mode .main{padding-bottom:24px}
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.14';
+const APP_VERSION = '1.5.15';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const thread = document.getElementById('thread');
