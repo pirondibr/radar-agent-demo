@@ -151,3 +151,34 @@ def track_lead_from_request(
         client_ip=client_ip,
         user_agent=user_agent,
     )
+
+
+def track_purchase_from_order(order: dict[str, Any]) -> dict[str, Any]:
+    """Purchase padrao: pagamento Mercado Pago aprovado."""
+    amount = float(order.get("amount") or 0)
+    product = str(order.get("product") or "deep_channel")
+    channel = str(order.get("channel") or "")
+    order_id = str(order.get("id") or "")
+    payment_id = str(order.get("payment_id") or "")
+    event_id = f"purchase_{payment_id or order_id}"
+    base = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    content_name = (
+        "radar_extras_pack"
+        if product == "extras_pack"
+        else f"radar_pro_{channel or 'canal'}"
+    )
+    return send_capi_event(
+        "Purchase",
+        event_source_url=f"{base}/" if base else "",
+        event_id=event_id,
+        custom_data={
+            "currency": str(order.get("currency") or "BRL"),
+            "value": amount,
+            "content_name": content_name,
+            "content_category": "radar_payment",
+            "content_ids": [order_id] if order_id else [content_name],
+            "content_type": "product",
+            "order_id": order_id,
+            "num_items": 1,
+        },
+    )

@@ -265,14 +265,42 @@ def apply_payment_to_order(payment: dict[str, Any]) -> Optional[dict[str, Any]]:
     status = str(payment.get("status") or "").lower()
     order["mp_status"] = status
     order["payment_id"] = str(payment.get("id") or order.get("payment_id") or "")
+    newly_paid = False
     if status == "approved":
+        newly_paid = order.get("status") != "paid"
         order["status"] = "paid"
         order["paid_at"] = time.time()
+        # Preferir valor real do pagamento MP quando disponivel
+        try:
+            tx = payment.get("transaction_amount")
+            if tx is not None:
+                order["amount"] = float(tx)
+        except Exception:
+            pass
     elif status in ("pending", "in_process", "in_mediation"):
         order["status"] = "pending"
     elif status in ("rejected", "cancelled", "refunded", "charged_back"):
         order["status"] = "failed"
     save_order(order)
+
+    if newly_paid and not order.get("meta_purchase_sent"):
+        try:
+            from meta_capi import track_purchase_from_order
+
+            result = track_purchase_from_order(order)
+            order["meta_purchase_sent"] = bool(result.get("ok") or result.get("skipped"))
+            order["meta_purchase"] = {
+                "ok": result.get("ok"),
+                "skipped": result.get("skipped"),
+                "event_id": result.get("event_id"),
+                "reason": result.get("reason"),
+                "error": result.get("error"),
+            }
+            save_order(order)
+            print(f"[meta_capi] Purchase order={order_id} result={order['meta_purchase']}", flush=True)
+        except Exception as e:
+            print(f"[meta_capi] Purchase falhou order={order_id}: {e}", flush=True)
+
     return order
 
 
