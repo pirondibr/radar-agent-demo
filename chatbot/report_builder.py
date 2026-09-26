@@ -416,6 +416,8 @@ def prioritize_competitors(
 
 
 COMPETITORS_DISPLAY_LIMIT = 10
+# Se houver menos de N "Alto", completa com "Medio" ate este minimo.
+COMPETITORS_MIN_FILL = 5
 
 
 def similarity_counts(competitors: list[dict[str, Any]]) -> dict[str, int]:
@@ -440,21 +442,21 @@ def similarity_counts(competitors: list[dict[str, Any]]) -> dict[str, int]:
 def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Cliente + concorrentes para a UI.
 
-    Prefere Alto. Se nao houver nenhum Alto, faz fallback para Medio e depois
-    qualquer concorrente (inclui preferidos), para nao deixar a lista vazia.
-    Sempre inclui concorrentes preferred / Fonte=Usuario mesmo alem do top N.
+    Prefere Alto. Se houver menos de COMPETITORS_MIN_FILL Altos, completa com Medio
+    ate esse minimo. Se nao houver nenhum Alto nem Medio, faz fallback para
+    preferred/any. Sempre inclui concorrentes preferred / Fonte=Usuario.
     Retorna (lista, meta) com display_tier e contagens.
     """
     client_rows = [c for c in competitors if c.get("is_client")]
     non_client = [c for c in competitors if not c.get("is_client")]
     counts = similarity_counts(competitors)
 
+    def _norm_sim(c: dict[str, Any]) -> str:
+        return str(c.get("similaridade") or "").strip().lower().replace("é", "e")
+
     def _tier(sim: str) -> list[dict[str, Any]]:
         sim_l = sim.lower()
-        return [
-            c for c in non_client
-            if str(c.get("similaridade") or "").strip().lower().replace("é", "e") == sim_l
-        ]
+        return [c for c in non_client if _norm_sim(c) == sim_l]
 
     def _is_user_pick(c: dict[str, Any]) -> bool:
         if c.get("preferred"):
@@ -462,14 +464,39 @@ def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[l
         fonte = str(c.get("fonte") or "").lower()
         return "usuario" in fonte or "user" in fonte
 
-    altos = _tier("alto")[:COMPETITORS_DISPLAY_LIMIT]
+    altos_all = _tier("alto")
+    medios_all = _tier("medio")
+    altos = altos_all[:COMPETITORS_DISPLAY_LIMIT]
     display_tier = "alto"
     note = ""
-    chosen = altos
+    chosen = list(altos)
+
+    # Completa ate COMPETITORS_MIN_FILL com Medio quando ha Altos, mas menos de 5
+    if altos and len(chosen) < COMPETITORS_MIN_FILL and medios_all:
+        seen = {(c.get("domain") or "").lower() for c in chosen}
+        filled = 0
+        for c in medios_all:
+            if len(chosen) >= COMPETITORS_MIN_FILL:
+                break
+            if len(chosen) >= COMPETITORS_DISPLAY_LIMIT:
+                break
+            dom = (c.get("domain") or "").lower()
+            if dom and dom in seen:
+                continue
+            chosen.append(c)
+            if dom:
+                seen.add(dom)
+            filled += 1
+        if filled:
+            display_tier = "alto+medio"
+            note = (
+                f"Poucos concorrentes de Alta similaridade ({len(altos)}). "
+                f"Completamos com {filled} de similaridade média (até {COMPETITORS_MIN_FILL})."
+            )
+
     if not chosen:
-        medios = _tier("medio")[:COMPETITORS_DISPLAY_LIMIT]
-        if medios:
-            chosen = medios
+        if medios_all:
+            chosen = medios_all[:COMPETITORS_DISPLAY_LIMIT]
             display_tier = "medio"
             note = (
                 "Nenhum concorrente classificado como Alta similaridade. "

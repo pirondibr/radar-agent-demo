@@ -267,17 +267,18 @@ def load_top_alto_competitors(xlsx_path: Path, limit: int = TOP_COMPETITORS) -> 
         return row[i] if i is not None and i < len(row) else ""
 
     altos: list[dict] = []
+    medios: list[dict] = []
     user_added: list[dict] = []
     for row in rows[1:]:
         if not any(row):
             continue
-        if cell(row, "Similaridade") != "Alto":
-            continue
+        sim = (cell(row, "Similaridade") or "").strip()
+        sim_norm = sim.lower().replace("é", "e")
         item = {
             "domain": normalize_domain(cell(row, "Dominio")),
             "url": cell(row, "URL"),
             "title": cell(row, "Titulo"),
-            "similaridade": cell(row, "Similaridade"),
+            "similaridade": sim,
             "perfil": cell(row, "Perfil"),
             "fonte": cell(row, "Fonte"),
             "nicho": cell(row, "Nicho (LLM)"),
@@ -288,10 +289,24 @@ def load_top_alto_competitors(xlsx_path: Path, limit: int = TOP_COMPETITORS) -> 
         # Concorrentes do usuario (enrich) entram sempre, mesmo alem do top N
         if "usuario" in fonte_l or "user" in fonte_l:
             user_added.append(item)
-        else:
+            continue
+        if sim_norm == "alto":
             altos.append(item)
+        elif sim_norm == "medio":
+            medios.append(item)
 
     out = altos[:limit]
+    # Se faltam Altos, completa com Medio ate o limite (minimo util: 5)
+    if len(out) < limit and medios:
+        seen = {c["domain"] for c in out}
+        for m in medios:
+            if len(out) >= limit:
+                break
+            if m["domain"] in seen:
+                continue
+            out.append(m)
+            seen.add(m["domain"])
+
     seen = {c["domain"] for c in out}
     for u in user_added:
         if u["domain"] in seen:
@@ -1290,7 +1305,7 @@ def main() -> None:
     traffic_map = load_traffic_map(national_xlsx)
     competitors = load_top_alto_competitors(national_xlsx, TOP_COMPETITORS)
     if not competitors:
-        raise RuntimeError("Nenhum concorrente Alto encontrado no XLSX nacional.")
+        raise RuntimeError("Nenhum concorrente Alto/Medio encontrado no XLSX nacional.")
     metric_entities = [build_client_entity(briefing, traffic_map)] + competitors
     mark(f"setup (briefing+top {len(competitors)} Alto)", t0)
     print(f"[METRICAS] Entidades: {len(metric_entities)} (cliente + {len(competitors)} Alto)", flush=True)
