@@ -192,7 +192,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.15';
+const APP_VERSION = '1.5.16';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const thread = document.getElementById('thread');
@@ -206,6 +206,14 @@ document.title = (VIDEO_MODE ? 'Demo vídeo · ' : '') + BOT_NAME + ' v' + APP_V
 if (VIDEO_MODE) {
  document.body.classList.add('video-mode');
  if (topMeta) topMeta.textContent = 'Demo vídeo · Chatguru';
+}
+
+/** Meta Pixel helper — eventos padrao: https://www.facebook.com/business/help/402791146561655 */
+function trackMeta(eventName, params) {
+ if (VIDEO_MODE) return;
+ try {
+  if (typeof fbq === 'function') fbq('track', eventName, params || {});
+ } catch (e) {}
 }
 
 let busy = false;
@@ -1491,6 +1499,13 @@ async function sendMessage() {
   job_id: jobId,
   demo: !!p.demo,
  };
+ // Evento padrao Lead: usuario enviou o site para analise
+ trackMeta('Lead', {
+  content_name: 'site_analysis_request',
+  content_category: 'radar_analysis',
+  status: p.demo ? 'demo' : 'live',
+  currency: 'BRL',
+ });
  topMeta.textContent = `${p.company || p.slug || 'cliente'}`;
  addBotBubble(data.ack);
  const first = stepDefs[0] || {};
