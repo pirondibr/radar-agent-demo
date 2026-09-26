@@ -192,9 +192,10 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.16';
+const APP_VERSION = '1.5.17';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
+const META_PIXEL_ID = '2289325455219613';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -208,12 +209,38 @@ if (VIDEO_MODE) {
  if (topMeta) topMeta.textContent = 'Demo vídeo · Chatguru';
 }
 
-/** Meta Pixel helper — eventos padrao: https://www.facebook.com/business/help/402791146561655 */
+/** Meta Pixel — eventos padrao: https://www.facebook.com/business/help/402791146561655 */
 function trackMeta(eventName, params) {
  if (VIDEO_MODE) return;
- try {
-  if (typeof fbq === 'function') fbq('track', eventName, params || {});
- } catch (e) {}
+ const payload = params || {};
+ const fire = () => {
+  try {
+   if (typeof fbq === 'function') {
+    fbq('track', eventName, payload);
+    console.info('[Meta Pixel]', eventName, payload);
+    return true;
+   }
+  } catch (e) {
+   console.warn('[Meta Pixel] erro ao disparar', eventName, e);
+  }
+  return false;
+ };
+ if (fire()) return;
+ // fbq ainda carregando: tenta de novo por alguns segundos
+ let tries = 0;
+ const timer = setInterval(() => {
+  tries += 1;
+  if (fire() || tries >= 20) clearInterval(timer);
+ }, 250);
+}
+
+function looksLikeSiteAnalysis(text) {
+ const t = String(text || '').trim();
+ if (!t) return false;
+ if (/^demo\b/i.test(t)) return true;
+ if (/https?:\/\//i.test(t)) return true;
+ if (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/.*)?$/i.test(t)) return true;
+ return false;
 }
 
 let busy = false;
@@ -1475,6 +1502,14 @@ async function sendMessage() {
   return;
  }
 
+ // Lead: dispara no envio do site (nao espera a API), para o Testar eventos do Meta
+ if (looksLikeSiteAnalysis(text)) {
+  trackMeta('Lead', {
+   content_name: 'site_analysis_request',
+   content_category: 'radar_analysis',
+  });
+ }
+
  setBusy(true);
 
  let jobId;
@@ -1499,13 +1534,6 @@ async function sendMessage() {
   job_id: jobId,
   demo: !!p.demo,
  };
- // Evento padrao Lead: usuario enviou o site para analise
- trackMeta('Lead', {
-  content_name: 'site_analysis_request',
-  content_category: 'radar_analysis',
-  status: p.demo ? 'demo' : 'live',
-  currency: 'BRL',
- });
  topMeta.textContent = `${p.company || p.slug || 'cliente'}`;
  addBotBubble(data.ack);
  const first = stepDefs[0] || {};
