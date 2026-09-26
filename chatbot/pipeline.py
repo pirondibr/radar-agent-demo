@@ -225,12 +225,18 @@ def _run_script(
     )
     assert proc.stdout is not None
     err_box: list[BaseException] = []
+    tail: list[str] = []
 
     def _reader() -> None:
         try:
             for line in proc.stdout:
                 line = line.rstrip("\n\r")
-                if line and on_log:
+                if not line:
+                    continue
+                tail.append(line)
+                if len(tail) > 40:
+                    del tail[:-40]
+                if on_log:
                     on_log(line)
         except BaseException as e:  # noqa: BLE001
             err_box.append(e)
@@ -244,12 +250,16 @@ def _run_script(
             proc.wait(timeout=10)
         except Exception:
             pass
-        raise TimeoutError(f"Comando excedeu {timeout_sec}s: {' '.join(cmd)}")
+        hint = ("\n--- ultimas linhas ---\n" + "\n".join(tail[-15:])) if tail else ""
+        raise TimeoutError(f"Comando excedeu {timeout_sec}s: {' '.join(cmd)}{hint}")
     proc.wait()
     if err_box:
         raise RuntimeError(f"Falha ao ler stdout: {err_box[0]}")
     if proc.returncode != 0:
-        raise RuntimeError(f"Comando falhou (codigo {proc.returncode}): {' '.join(cmd)}")
+        hint = ("\n--- ultimas linhas ---\n" + "\n".join(tail[-20:])) if tail else ""
+        raise RuntimeError(
+            f"Comando falhou (codigo {proc.returncode}): {' '.join(cmd)}{hint}"
+        )
 
 
 def _fmt_eta(seconds: int) -> str:
@@ -612,6 +622,13 @@ def run_live_pipeline(
     if not SCRIPT_ENTENDER.exists():
         raise FileNotFoundError(SCRIPT_ENTENDER)
     _run_script([sys.executable, str(SCRIPT_ENTENDER), url], FINAL_DIR, on_log)
+
+    briefing_xlsx = find_briefing_xlsx(slug)
+    if not briefing_xlsx or not briefing_xlsx.exists():
+        raise RuntimeError(
+            f"Briefing nao gerado para '{slug}' (scrape/bloqueio do site?). "
+            "Nao avancei para concorrentes sem o XLSX de entender o cliente."
+        )
 
     if not SCRIPT_CONCORRENTES.exists():
         raise FileNotFoundError(SCRIPT_CONCORRENTES)

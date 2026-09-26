@@ -42,6 +42,8 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "google/gemini-2.5-flash"
+SCRAPINGBEE_API_KEY = os.environ.get("SCRAPINGBEE_API_KEY", "").strip()
+SCRAPINGBEE_URL = "https://app.scrapingbee.com/api/v1/"
 
 BASE_DIR = Path(__file__).resolve().parent
 # Outputs centralizados no Radar 09 2026
@@ -97,11 +99,28 @@ def _www_alternate_url(url: str) -> str:
         return ""
 
 
+def _fetch_html_scrapingbee(url: str, render_js: bool = False) -> str:
+    if not SCRAPINGBEE_API_KEY:
+        raise RuntimeError("SCRAPINGBEE_API_KEY ausente")
+    params = {
+        "api_key": SCRAPINGBEE_API_KEY,
+        "url": url,
+        "render_js": "true" if render_js else "false",
+        "premium_proxy": "true",
+        "country_code": "br",
+    }
+    r = requests.get(SCRAPINGBEE_URL, params=params, timeout=90)
+    r.raise_for_status()
+    return r.text
+
+
 def scrape_site(url: str, max_chars: int = 12000) -> dict:
     print(f"[1A] Scraping {url} ...")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+                      "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
     }
     out = {
         "title": "", "meta_description": "", "h1": [], "h2": [], "nav": [], "body": "",
@@ -112,7 +131,7 @@ def scrape_site(url: str, max_chars: int = 12000) -> dict:
     if alt and alt.rstrip("/") != url.rstrip("/"):
         candidates.append(alt)
 
-    r = None
+    html = ""
     last_err = None
     for i, candidate in enumerate(candidates):
         try:
@@ -120,7 +139,7 @@ def scrape_site(url: str, max_chars: int = 12000) -> dict:
                 print(f"[1A] Tentando URL alternativa: {candidate} ...")
             resp = requests.get(candidate, headers=headers, timeout=30, allow_redirects=True)
             resp.raise_for_status()
-            r = resp
+            html = resp.text or ""
             out["final_url"] = str(resp.url or candidate)
             if i > 0:
                 print(f"[1A] OK via alternativa: {out['final_url']}")
@@ -129,12 +148,34 @@ def scrape_site(url: str, max_chars: int = 12000) -> dict:
             last_err = e
             print(f"[1A] Erro no scraping: {e}")
 
-    if r is None:
-        if last_err and len(candidates) > 1:
+    # Sites que bloqueiam IP do datacenter (403) — ScrapingBee com proxy BR
+    if not html and SCRAPINGBEE_API_KEY:
+        for candidate in candidates:
+            try:
+                print(f"[1A] Fallback ScrapingBee: {candidate} ...")
+                html = _fetch_html_scrapingbee(candidate, render_js=False)
+                out["final_url"] = candidate
+                print(f"[1A] OK via ScrapingBee: {candidate}")
+                break
+            except Exception as e:
+                last_err = e
+                print(f"[1A] ScrapingBee falhou: {e}")
+        if not html:
+            try:
+                print(f"[1A] Fallback ScrapingBee+JS: {candidates[0]} ...")
+                html = _fetch_html_scrapingbee(candidates[0], render_js=True)
+                out["final_url"] = candidates[0]
+                print(f"[1A] OK via ScrapingBee+JS")
+            except Exception as e:
+                last_err = e
+                print(f"[1A] ScrapingBee+JS falhou: {e}")
+
+    if not html:
+        if last_err:
             print(f"[1A] Todas as tentativas falharam (ultima: {last_err})")
         return out
 
-    soup = BeautifulSoup(r.text, "html.parser")
+    soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
@@ -1753,7 +1794,7 @@ def run(url: str, mvp: bool = True):
     site = scrape_site(url)
     if not site.get("body"):
         print("[!] Site vazio. Abortando.")
-        return
+        sys.exit(1)
 
     # Preferir a URL que de fato respondeu (ex.: www quando apex retorna 404)
     url = site.get("final_url") or url
