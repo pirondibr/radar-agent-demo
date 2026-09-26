@@ -192,7 +192,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.17';
+const APP_VERSION = '1.5.18';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
@@ -209,29 +209,76 @@ if (VIDEO_MODE) {
  if (topMeta) topMeta.textContent = 'Demo vídeo · Chatguru';
 }
 
-/** Meta Pixel — eventos padrao: https://www.facebook.com/business/help/402791146561655 */
+function metaEventId() {
+ return 'ev_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+function metaTestEventCode() {
+ try {
+  return new URLSearchParams(location.search).get('test_event_code') || '';
+ } catch (e) {
+  return '';
+ }
+}
+
+/** Meta Pixel + CAPI — https://www.facebook.com/business/help/402791146561655 */
 function trackMeta(eventName, params) {
  if (VIDEO_MODE) return;
  const payload = params || {};
- const fire = () => {
+ const eventId = metaEventId();
+ const testCode = metaTestEventCode();
+
+ const fireBrowser = () => {
   try {
-   if (typeof fbq === 'function') {
-    fbq('track', eventName, payload);
-    console.info('[Meta Pixel]', eventName, payload);
-    return true;
+   if (typeof fbq !== 'function') return false;
+   // Stub do pixel sempre existe; callMethod so aparece apos fbevents.js carregar
+   const loaded = !!(window.fbq && (fbq.callMethod || fbq.loaded));
+   fbq('track', eventName, payload, { eventID: eventId });
+   console.info('[Meta Pixel]', eventName, payload, {
+    eventID: eventId,
+    scriptLoaded: loaded,
+   });
+   if (!loaded) {
+    console.warn('[Meta Pixel] fbevents.js parece bloqueado (Firefox ETP / adblock). Usando CAPI no servidor.');
    }
+   return true;
   } catch (e) {
    console.warn('[Meta Pixel] erro ao disparar', eventName, e);
+   return false;
   }
-  return false;
  };
- if (fire()) return;
- // fbq ainda carregando: tenta de novo por alguns segundos
- let tries = 0;
- const timer = setInterval(() => {
-  tries += 1;
-  if (fire() || tries >= 20) clearInterval(timer);
- }, 250);
+
+ if (!fireBrowser()) {
+  let tries = 0;
+  const timer = setInterval(() => {
+   tries += 1;
+   if (fireBrowser() || tries >= 20) clearInterval(timer);
+  }, 250);
+ }
+
+ // Conversions API (servidor) — aparece em "Testar eventos" mesmo com browser bloqueado
+ try {
+  fetch('/api/meta/event', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({
+    event_name: eventName,
+    custom_data: payload,
+    event_source_url: location.href,
+    event_id: eventId,
+    test_event_code: testCode,
+   }),
+   keepalive: true,
+  })
+   .then((r) => r.json())
+   .then((d) => {
+    console.info('[Meta CAPI]', d);
+    if (d && d.skipped) {
+     console.warn('[Meta CAPI] Configure META_CAPI_ACCESS_TOKEN no Render para o servidor enviar ao Meta.');
+    }
+   })
+   .catch((e) => console.warn('[Meta CAPI] falha', e));
+ } catch (e) {}
 }
 
 function looksLikeSiteAnalysis(text) {

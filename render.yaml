@@ -36,3 +36,7 @@ services:
         value: "https://agente.radardaconcorrencia.com.br"
       - key: PRO_PRICE_BRL
         value: "99"
+      - key: META_PIXEL_ID
+        value: "2289325455219613"
+      - key: META_CAPI_ACCESS_TOKEN
+        sync: false

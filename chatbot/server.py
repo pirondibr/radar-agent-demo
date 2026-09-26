@@ -40,6 +40,7 @@ from mercadopago_client import (
     mp_configured,
     mp_public_key,
 )
+from meta_capi import capi_configured, send_capi_event
 import usage_db
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -66,7 +67,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.17"
+APP_VERSION = "1.5.18"
 
 try:
     usage_db.init_db()
@@ -269,10 +270,41 @@ def hello():
         "live_ready": live_ok,
         "keys_ready": keys,
         "payments_ready": mp_configured(),
+        "meta_capi_ready": capi_configured(),
         "pro_price": PRO_PRICE,
         "extras_price": EXTRAS_PRICE,
         "version": APP_VERSION,
     })
+
+
+@app.post("/api/meta/event")
+def meta_capi_event():
+    """Relay browser events to Meta Conversions API (bypass adblock/Firefox ETP)."""
+    data = request.get_json(silent=True) or {}
+    event_name = (data.get("event_name") or data.get("event") or "").strip()
+    if not event_name:
+        return jsonify({"ok": False, "error": "event_name obrigatorio"}), 400
+
+    custom = data.get("custom_data")
+    if custom is not None and not isinstance(custom, dict):
+        custom = {}
+
+    client_ip = (
+        (request.headers.get("CF-Connecting-IP") or "").strip()
+        or (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        or (request.remote_addr or "")
+    )
+    result = send_capi_event(
+        event_name,
+        event_source_url=str(data.get("event_source_url") or request.referrer or "")[:2048],
+        custom_data=custom if isinstance(custom, dict) else {},
+        client_ip=client_ip,
+        user_agent=(request.headers.get("User-Agent") or "")[:512],
+        event_id=str(data.get("event_id") or "").strip(),
+        test_event_code=str(data.get("test_event_code") or "").strip(),
+    )
+    status = 200 if result.get("ok") or result.get("skipped") else 502
+    return jsonify(result), status
 
 
 @app.post("/api/chat")
