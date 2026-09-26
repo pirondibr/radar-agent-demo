@@ -25,6 +25,7 @@ from parse_input import ParsedInput, parse_user_message
 from pipeline import (
     EXTRA_STEP_DEFS,
     STEP_DEFS,
+    clear_slug_cache,
     run_enrich_competitors,
     run_extras_pipeline,
     run_pipeline,
@@ -67,7 +68,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.25"
+APP_VERSION = "1.5.26"
 
 try:
     usage_db.init_db()
@@ -1040,6 +1041,39 @@ def admin_get_file(run_id: str):
     if not path or not path.exists():
         return jsonify({"error": "Arquivo nao encontrado"}), 404
     return send_from_directory(str(path.parent), path.name, as_attachment=True)
+
+
+@app.post("/api/admin/clear-cache")
+def admin_clear_cache():
+    """Apaga outputs do slug (metricas/entender/concorrentes) para forcar re-run live."""
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or request.args.get("slug") or "").strip()
+    run_id = (data.get("run_id") or request.args.get("run_id") or "").strip()
+    if not slug and run_id:
+        run = usage_db.get_run(run_id)
+        if run:
+            slug = (run.get("slug") or "").strip()
+    if not slug:
+        return jsonify({"error": "slug obrigatorio"}), 400
+    try:
+        result = clear_slug_cache(slug)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"Falha ao limpar cache: {e}"}), 500
+    try:
+        if run_id:
+            usage_db.append_log(
+                run_id,
+                f"[ADMIN] Cache limpo para slug={result['slug']} deleted={len(result['deleted'])}",
+                level="warn",
+                source="admin",
+            )
+    except Exception:
+        pass
+    return jsonify({"ok": True, **result})
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from parse_input import ParsedInput, normalize_url, slugify_client
 from report_builder import (
@@ -154,6 +154,49 @@ if __import__("os").environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true"
         "instagram": 0.5,
         "youtube": 0.5,
         "tiktok": 0.5,
+    }
+
+
+def _safe_slug(slug: str) -> str:
+    """Slug seguro para caminhos (somente [a-z0-9_-])."""
+    import re
+
+    s = (slug or "").strip().lower()
+    s = re.sub(r"[^a-z0-9_-]+", "", s)
+    return s[:80]
+
+
+def clear_slug_cache(slug: str) -> dict[str, Any]:
+    """
+    Apaga artefatos de outputs/{metricas,entender,concorrentes}/<slug>
+    para forçar pipeline live no proximo run (sai do modo CACHE).
+    """
+    import shutil
+
+    safe = _safe_slug(slug)
+    if not safe or safe in (".", ".."):
+        raise ValueError("Slug invalido")
+
+    deleted: list[str] = []
+    missing: list[str] = []
+    for base in (METRICAS_DIR, BRIEFING_DIR, CONCORRENTES_DIR):
+        folder = (base / safe).resolve()
+        # Garante que esta dentro do outputs esperado
+        try:
+            folder.relative_to(base.resolve())
+        except ValueError as e:
+            raise ValueError(f"Caminho fora de outputs: {folder}") from e
+        if folder.exists() and folder.is_dir():
+            shutil.rmtree(folder)
+            deleted.append(str(folder))
+        else:
+            missing.append(str(folder))
+
+    return {
+        "slug": safe,
+        "deleted": deleted,
+        "missing": missing,
+        "cleared": bool(deleted),
     }
 
 

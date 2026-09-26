@@ -13,6 +13,12 @@ header h1{font-size:15px;font-weight:700}
 header .meta{margin-left:auto;font-size:12px;color:var(--muted);font-family:var(--mono)}
 button,a.btn{border:1px solid var(--border);background:var(--panel2);color:var(--text);padding:7px 12px;border-radius:8px;font-size:12px;cursor:pointer;text-decoration:none}
 button:hover,a.btn:hover{border-color:var(--accent)}
+button.danger{border-color:rgba(239,68,68,.45);color:#fecaca;background:rgba(239,68,68,.08)}
+button.danger:hover{border-color:var(--err)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+.toast{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.toast.ok{color:var(--ok)}.toast.err{color:var(--err)}
 .layout{display:grid;grid-template-columns:360px 1fr;min-height:calc(100vh - 52px)}
 @media(max-width:900px){.layout{grid-template-columns:1fr}}
 .list{border-right:1px solid var(--border);overflow:auto;max-height:calc(100vh - 52px)}
@@ -129,11 +135,18 @@ async function openRun(id) {
     <h2>${esc(run.company || run.slug || run.id)}</h2>
     <div class="sub">${esc(run.id)} · ${esc(run.url || '')} · ${badge(run.status)} · mode ${esc(run.mode || '—')}</div>
     ${run.error_message ? `<div class="errbox">${esc(run.error_message)}</div>` : ''}
+    <div class="actions">
+      <button type="button" class="danger" id="btnClearCache" ${run.slug ? '' : 'disabled'} title="Apaga XLSX de outputs para forçar análise ao vivo">
+        Limpar cache e refazer
+      </button>
+      <span class="toast" id="clearToast"></span>
+    </div>
     <div class="grid">
       <div class="card"><div class="k">Duração</div><div class="v">${fmtMs(run.duration_ms)}</div></div>
       <div class="card"><div class="k">Início</div><div class="v" style="font-size:13px">${fmtTs(run.started_at)}</div></div>
       <div class="card"><div class="k">Tipo</div><div class="v" style="font-size:14px">${esc(run.kind)}</div></div>
       <div class="card"><div class="k">Concorrentes UI</div><div class="v">${summary.competitors_ui ?? '—'}</div></div>
+      <div class="card"><div class="k">Slug</div><div class="v" style="font-size:13px">${esc(run.slug || '—')}</div></div>
     </div>
 
     <section>
@@ -175,6 +188,48 @@ async function openRun(id) {
       }).join('') || 'Sem logs'}</div>
     </section>
   `;
+
+  const btnClear = document.getElementById('btnClearCache');
+  if (btnClear) {
+    btnClear.addEventListener('click', () => clearCache(run));
+  }
+}
+
+async function clearCache(run) {
+  const slug = (run.slug || '').trim();
+  if (!slug) return;
+  const toast = document.getElementById('clearToast');
+  const btn = document.getElementById('btnClearCache');
+  const ok = confirm(
+    `Limpar cache de "${slug}"?\n\nIsso apaga os XLSX em outputs (métricas, briefing, concorrentes).\nO próximo pedido no chat vai rodar a análise completa de novo.`
+  );
+  if (!ok) return;
+  if (btn) btn.disabled = true;
+  if (toast) { toast.className = 'toast'; toast.textContent = 'Limpando…'; }
+  try {
+    const path = '/api/admin/clear-cache' + (token ? '?token=' + encodeURIComponent(token) : '');
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
+      body: JSON.stringify({ slug, run_id: run.id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (toast) { toast.className = 'toast err'; toast.textContent = data.error || ('Erro ' + res.status); }
+      return;
+    }
+    const n = (data.deleted || []).length;
+    if (toast) {
+      toast.className = 'toast ok';
+      toast.textContent = n
+        ? `Cache limpo (${n} pasta${n > 1 ? 's' : ''}). Pode rodar de novo no chat.`
+        : 'Nada para apagar (já estava limpo). Pode rodar de novo.';
+    }
+  } catch (e) {
+    if (toast) { toast.className = 'toast err'; toast.textContent = String(e.message || e); }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 document.getElementById('btnRefresh').addEventListener('click', loadRuns);
