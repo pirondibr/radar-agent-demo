@@ -42,7 +42,7 @@ from mercadopago_client import (
     mp_public_key,
 )
 from meta_capi import capi_configured, send_capi_event, track_lead_from_request
-from report_html import load_saved_report, render_report_html
+from report_html import load_saved_report, render_report_html, report_has_channel_sections
 import usage_db
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -69,7 +69,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.34"
+APP_VERSION = "1.5.35"
 
 try:
     usage_db.init_db()
@@ -1037,38 +1037,82 @@ def admin_export_html(run_id: str):
     if not run:
         return jsonify({"error": "Run nao encontrado"}), 404
 
-    report = load_saved_report(run_id, usage_db.RUNS_DIR)
-    if not report:
-        # Fallback: reconstrói a partir do XLSX de metricas do slug
+    def _build_from_xlsx(xlsx: Path) -> Optional[dict]:
+        try:
+            from report_builder import build_report_from_xlsx
+
+            return build_report_from_xlsx(
+                xlsx,
+                client_name=run.get("company") or run.get("slug") or "",
+            )
+        except Exception as e:
+            print(f"[export] falha build_report_from_xlsx: {e}")
+            return None
+
+    def _find_metricas_path() -> Optional[Path]:
+        # 1) Artefato gravado na propria run (preferencia: copia local)
+        arts = usage_db.get_run_artifacts(run_id)
+        for a in reversed(arts):
+            if a.get("kind") != "metricas_xlsx":
+                continue
+            p = Path(a.get("path") or "")
+            if p.exists():
+                return p
+            # tenta pelo nome na pasta da run
+            name = None
+            try:
+                meta = json.loads(a.get("meta_json") or "{}")
+                name = meta.get("name")
+            except Exception:
+                name = p.name if p.name else None
+            if name:
+                local = usage_db.RUNS_DIR / run_id / name
+                if local.exists():
+                    return local
+        # 2) Pasta outputs do slug
         slug = (run.get("slug") or "").strip()
         if slug:
             try:
                 from pipeline import find_metricas_xlsx
-                from report_builder import build_report_from_xlsx
 
                 xlsx = find_metricas_xlsx(slug)
                 if xlsx and xlsx.exists():
-                    report = build_report_from_xlsx(
-                        xlsx,
-                        client_name=run.get("company") or slug,
-                    )
-                    try:
-                        usage_db.save_json_artifact(
-                            run_id,
-                            "report.json",
-                            report,
-                            kind="report",
-                            step_id="export",
-                            meta={"source": "rebuild_xlsx"},
-                        )
-                    except Exception:
-                        pass
+                    return xlsx
             except Exception as e:
-                return jsonify({"error": f"Nao foi possivel montar o relatorio: {e}"}), 500
+                print(f"[export] find_metricas_xlsx: {e}")
+        # 3) Qualquer xlsx de metricas na pasta da run
+        run_dir = usage_db.RUNS_DIR / run_id
+        if run_dir.exists():
+            files = sorted(run_dir.glob("metricas-concorrentes-*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if files:
+                return files[0]
+        return None
+
+    report = load_saved_report(run_id, usage_db.RUNS_DIR)
+    source = "report.json" if report else ""
+
+    # Se so tem concorrentes (ou report incompleto), tenta remontar do XLSX
+    if not report_has_channel_sections(report):
+        xlsx = _find_metricas_path()
+        if xlsx:
+            rebuilt = _build_from_xlsx(xlsx)
+            if rebuilt and report_has_channel_sections(rebuilt):
+                report = rebuilt
+                source = f"xlsx:{xlsx.name}"
+                try:
+                    usage_db.save_json_artifact(
+                        run_id,
+                        "report.json",
+                        report,
+                        kind="report",
+                        step_id="export",
+                        meta={"source": source},
+                    )
+                except Exception:
+                    pass
 
     if not report:
-        # Ultimo recurso: so concorrentes salvos
-        comps = []
+        comps: list = []
         for a in usage_db.get_run_artifacts(run_id):
             if a.get("kind") == "competitors_ui":
                 try:
@@ -1081,18 +1125,26 @@ def admin_export_html(run_id: str):
             "briefing": {
                 "client": run.get("company") or "",
                 "url": run.get("url") or "",
-                "summary": "Relatorio parcial — o JSON completo desta run nao estava salvo.",
+                "summary": (
+                    "Relatório parcial: não encontramos o XLSX de métricas desta run "
+                    "(Ads/SEO/Marca). Só os concorrentes salvos estão disponíveis. "
+                    "Novas análises passam a guardar o relatório completo."
+                ),
             },
             "competitors": comps if isinstance(comps, list) else [],
-            "competitors_count": len([c for c in (comps or []) if isinstance(c, dict) and not c.get("is_client")]),
+            "competitors_count": len(
+                [c for c in (comps or []) if isinstance(c, dict) and not c.get("is_client")]
+            ),
         }
+        source = "competitors_ui"
 
-    html_doc = render_report_html(report, run_meta=run)
+    html_doc = render_report_html(report, run_meta={**run, "export_source": source})
     slug = (run.get("slug") or run.get("company") or run_id).strip() or run_id
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in slug)[:60]
     resp = Response(html_doc, mimetype="text/html; charset=utf-8")
     resp.headers["Content-Disposition"] = f'inline; filename="radar-{safe}-{run_id}.html"'
     resp.headers["Cache-Control"] = "no-store"
+    resp.headers["X-Radar-Export-Source"] = source or "unknown"
     return resp
 
 

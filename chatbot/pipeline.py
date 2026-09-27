@@ -439,6 +439,10 @@ def _record_xlsx_artifacts(run_id: Optional[str], slug: str, step_id: str) -> No
     if not run_id or not usage_db:
         return
     try:
+        import shutil
+
+        run_dir = usage_db.RUNS_DIR / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
         for kind, finder in (
             ("briefing_xlsx", find_briefing_xlsx),
             ("concorrentes_xlsx", find_concorrentes_xlsx),
@@ -446,12 +450,20 @@ def _record_xlsx_artifacts(run_id: Optional[str], slug: str, step_id: str) -> No
         ):
             path = finder(slug)
             if path and path.exists():
+                # Copia para a pasta da run (disco efemero / redeploy nao perde o export)
+                dest = run_dir / path.name
+                try:
+                    if not dest.exists() or dest.stat().st_mtime < path.stat().st_mtime:
+                        shutil.copy2(path, dest)
+                    art_path = dest
+                except Exception:
+                    art_path = path
                 usage_db.add_artifact(
                     run_id,
                     kind=kind,
-                    path=str(path),
+                    path=str(art_path),
                     step_id=step_id,
-                    meta={"name": path.name},
+                    meta={"name": path.name, "source": str(path)},
                 )
     except Exception:
         pass

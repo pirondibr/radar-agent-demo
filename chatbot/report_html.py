@@ -186,7 +186,7 @@ def render_report_html(
     <button type="button" onclick="window.close()">Fechar</button>
   </div>
   <h1>Radar da Concorrência — {_esc(client)}</h1>
-  <div class="sub">{run_line}</div>
+  <div class="sub">{run_line}{(' · fonte: ' + _esc(meta.get('export_source'))) if meta.get('export_source') else ''}</div>
 
   <div class="card">
     <h2>Briefing</h2>
@@ -219,3 +219,14 @@ def load_saved_report(run_id: str, runs_dir: Path) -> Optional[dict[str, Any]]:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def report_has_channel_sections(report: Optional[dict[str, Any]]) -> bool:
+    """True se o report tem Ads/SEO/Marca/extras (nao so concorrentes)."""
+    if not isinstance(report, dict):
+        return False
+    for key in ("google_ads", "seo", "brand", "meta", "linkedin", "instagram", "youtube", "tiktok"):
+        sec = report.get(key)
+        if isinstance(sec, dict) and (sec.get("rows") or sec.get("insight") or sec.get("total_fmt") or sec.get("total_traffic_fmt")):
+            return True
+    return False
