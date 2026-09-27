@@ -252,7 +252,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.30';
+const APP_VERSION = '1.5.31';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
@@ -1130,7 +1130,7 @@ function renderMetaAdsSection(meta, client) {
  meta = meta || {};
  const existed = !!document.querySelector('[data-section="meta"]');
  const rows = (meta.rows || []).map((r, i) => `
- <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}${simCell(r)}<td class="dt-val">${esc(r.ads_fmt || r.value_fmt || '0')}</td><td class="dt-val">${esc(r.investimento_fmt || 'R$ 0')}</td><td class="dt-val">${esc(r.pct_fmt || '')}</td>${adsLinkCell(r.url)}</tr>`).join('');
+ <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}<td class="dt-val">${esc(r.ads_fmt || r.value_fmt || '0')}</td><td class="dt-val">${esc(r.investimento_fmt || 'R$ 0')}</td><td class="dt-val">${esc(r.pct_fmt || '')}</td>${adsLinkCell(r.url)}${simCell(r)}</tr>`).join('');
  const rank = meta.client_rank ? `, voce em ${meta.client_rank}º` : '';
  const node = replaceSection('meta', `
  <div class="q-block reveal" data-section="meta">
@@ -1141,7 +1141,7 @@ function renderMetaAdsSection(meta, client) {
  <div class="hero-num"><div class="hero-val" style="color:var(--violet)">${esc(meta.total_invest_fmt || 'R$ 0')}</div><div class="hero-sub">investidos/mes estimado, ${esc(meta.total_fmt || '0')} anuncios${esc(rank)}</div></div>
  <div class="ac-text">Estimativa: R$ 500 por anúncio ativo (Meta Ads Library).</div>
  <div class="table-scroll-hint" aria-hidden="true">Deslize → para ver mais colunas</div><div class="table-scroll"><table class="dtable">
- <thead><tr><th>#</th><th>Empresa</th><th>Similaridade</th><th>Anuncios</th><th style="text-align:right">Investimento</th><th style="text-align:right">% do Total</th><th>Ver anuncios</th></tr></thead>
+ <thead><tr><th>#</th><th>Empresa</th><th>Anuncios</th><th style="text-align:right">Investimento</th><th style="text-align:right">% do Total</th><th>Ver anuncios</th><th>Similaridade</th></tr></thead>
  <tbody>${rows || '<tr><td colspan="7" class="dt-name">Sem dados de Meta Ads</td></tr>'}</tbody>
  </table></div>
  ${analysisBlocks('meta', meta.analysis_title, meta.insight, meta.pro_hook)}
@@ -1163,9 +1163,9 @@ function renderCountChannel(section, title, colorVar, agentLetter, labelCls, age
  const rows = (data.rows || []).map((r, i) => `
   <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}
    ${companyNameCell(r, preferProfile)}
-   ${simCell(r)}
    <td class="dt-val">${esc(r.value_fmt)}</td>
    <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,${colorVar},#a5b4fc)"></div></div></td>
+   ${simCell(r)}
   </tr>`).join('');
  const rank = data.client_rank ? `, voce em ${data.client_rank}º` : '';
  append(`
@@ -1177,7 +1177,7 @@ function renderCountChannel(section, title, colorVar, agentLetter, labelCls, age
    <div class="hero-num"><div class="hero-val" style="color:${colorVar}">${esc(data.total_fmt || '0')}</div>
    <div class="hero-sub">${esc(data.unit || '')} no recorte, ${esc(data.leader || '—')} lidera${esc(rank)}</div></div>
    <div class="table-scroll-hint" aria-hidden="true">Deslize → para ver mais colunas</div><div class="table-scroll"><table class="dtable">
-    <thead><tr><th>#</th><th>Empresa</th><th>Similaridade</th><th style="text-align:right">Valor</th><th>Comparação</th></tr></thead>
+    <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Valor</th><th>Comparação</th><th>Similaridade</th></tr></thead>
     <tbody>${rows || '<tr><td colspan="5" class="dt-name">Sem dados neste canal</td></tr>'}</tbody>
    </table></div>
    ${analysisBlocks('ads', data.analysis_title, data.insight, data.pro_hook)}
@@ -1230,7 +1230,7 @@ function renderAdsSection(gads, client) {
  gads = gads || {};
  const existed = !!document.querySelector('[data-section="ads"]');
  const gRows = (gads.rows || []).map((r, i) => `
- <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}${simCell(r)}<td class="dt-val">${esc(r.ads_fmt)}</td><td class="dt-val">${esc(r.investimento_fmt)}</td><td class="dt-val">${esc(r.pct_fmt)}</td>${adsLinkCell(r.url)}</tr>`).join('');
+ <tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}<td class="dt-val">${esc(r.ads_fmt)}</td><td class="dt-val">${esc(r.investimento_fmt)}</td><td class="dt-val">${esc(r.pct_fmt)}</td>${adsLinkCell(r.url)}${simCell(r)}</tr>`).join('');
  const adsRank = gads.client_rank ? `, voce em ${gads.client_rank}º` : '';
  replaceSection('ads', `
  <div class="q-block reveal" data-section="ads">
@@ -1241,7 +1241,7 @@ function renderAdsSection(gads, client) {
  <div class="hero-num"><div class="hero-val" style="color:var(--amber)">${esc(gads.total_invest_fmt || 'R$ 0')}</div><div class="hero-sub">investidos/mes estimado, ${esc(gads.total_ads_fmt || '0')} anuncios${esc(adsRank)}</div></div>
  <div class="ac-text">Dados de anúncios fornecidos pelo Google Transparency.</div>
  <div class="table-scroll-hint" aria-hidden="true">Deslize → para ver mais colunas</div><div class="table-scroll"><table class="dtable">
- <thead><tr><th>#</th><th>Empresa</th><th>Similaridade</th><th>Anuncios</th><th style="text-align:right">Investimento</th><th style="text-align:right">% do Total</th><th>Ver anuncios</th></tr></thead>
+ <thead><tr><th>#</th><th>Empresa</th><th>Anuncios</th><th style="text-align:right">Investimento</th><th style="text-align:right">% do Total</th><th>Ver anuncios</th><th>Similaridade</th></tr></thead>
  <tbody>${gRows || '<tr><td colspan="7" class="dt-name">Sem dados de Google Ads</td></tr>'}</tbody>
  </table></div>
  ${analysisBlocks('ads', gads.analysis_title, gads.insight, gads.pro_hook)}
@@ -1261,9 +1261,9 @@ function renderSeoSection(seo, client) {
  seo = seo || {};
  const sRows = (seo.rows || []).map((r, i) => {
  const growCls = (!r.growth_fmt || r.growth_fmt === 'n/d' || r.growth_fmt === ' ') ? 'gfl' : (r.growth_hot ? 'ghot' : (r.growth_up ? 'gup' : 'gdn'));
- return `<tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}${simCell(r)}<td class="dt-val">${esc(r.traffic_fmt)}</td>
+ return `<tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}<td class="dt-val">${esc(r.traffic_fmt)}</td>
  <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,#2563eb,#60a5fa)"></div></div></td>
- <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td></tr>`;
+ <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td>${simCell(r)}</tr>`;
  }).join('');
  const seoRank = seo.client_rank ? `, voce em ${seo.client_rank}º` : '';
  const existed = !!document.querySelector('[data-section="seo"]');
@@ -1277,7 +1277,7 @@ function renderSeoSection(seo, client) {
  <div class="ac-text">Dados de visitas estimados pela empresa Semrush.</div>
  <div class="hint">*Crescimento: comparativo com até 3 anos (ou o período mais longo disponível: 2a / 1a).</div>
  <div class="table-scroll-hint" aria-hidden="true">Deslize → para ver mais colunas</div><div class="table-scroll"><table class="dtable">
- <thead><tr><th>#</th><th>Empresa</th><th>Similaridade</th><th style="text-align:right">Trafego</th><th>Comparação</th><th style="text-align:right">Crescimento*</th></tr></thead>
+ <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Trafego</th><th>Comparação</th><th style="text-align:right">Crescimento*</th><th>Similaridade</th></tr></thead>
  <tbody>${sRows || '<tr><td colspan="6" class="dt-name">Sem dados de SEO</td></tr>'}</tbody>
  </table></div>
  ${analysisBlocks('seo', seo.analysis_title, seo.insight, seo.pro_hook)}
@@ -1298,9 +1298,9 @@ function renderBrandSection(brand, client) {
  const existed = !!document.querySelector('[data-section="brand"]');
  const bRows = (brand.rows || []).map((r, i) => {
  const growCls = (!r.growth_fmt || r.growth_fmt === 'n/d' || r.growth_fmt === ' ') ? 'gfl' : (r.growth_hot ? 'ghot' : (r.growth_up ? 'gup' : 'gdn'));
- return `<tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}${simCell(r)}<td class="dt-val">${esc(r.traffic_fmt)}</td>
+ return `<tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}<td class="dt-val">${esc(r.traffic_fmt)}</td>
  <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,#0d9488,#2dd4bf)"></div></div></td>
- <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td></tr>`;
+ <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td>${simCell(r)}</tr>`;
  }).join('');
  const brandRank = brand.client_rank ? `, voce em ${brand.client_rank}º` : '';
  replaceSection('brand', `
@@ -1313,7 +1313,7 @@ function renderBrandSection(brand, client) {
  <div class="ac-text">Dados de pesquisa pelo nome da sua empresa no Google.</div>
  <div class="hint">*Crescimento: comparativo com até 3 anos (ou o período mais longo disponível: 2a / 1a).</div>
  <div class="table-scroll-hint" aria-hidden="true">Deslize → para ver mais colunas</div><div class="table-scroll"><table class="dtable">
- <thead><tr><th>#</th><th>Empresa</th><th>Similaridade</th><th style="text-align:right">Buscas/mes</th><th>Comparação</th><th style="text-align:right">Crescimento*</th></tr></thead>
+ <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Buscas/mes</th><th>Comparação</th><th style="text-align:right">Crescimento*</th><th>Similaridade</th></tr></thead>
  <tbody>${bRows || '<tr><td colspan="6" class="dt-name">Sem dados de marca</td></tr>'}</tbody>
  </table></div>
  ${analysisBlocks('brand', brand.analysis_title, brand.insight, brand.pro_hook)}
