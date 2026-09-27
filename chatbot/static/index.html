@@ -252,7 +252,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.32';
+const APP_VERSION = '1.5.33';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
@@ -1634,8 +1634,34 @@ function showExtraCompetitorsPrompt(jobId, msg) {
  send.addEventListener('click', () => {
   const raw = (inp.value || '').trim();
   addUserBubble(raw || '(nenhum)');
-  const parts = raw.split(/[,;\/\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3);
-  submitEnrich(parts);
+  // Nao splitar em '/' (quebra https://...) — so virgula, ;, quebra de linha
+  const urlRe = /https?:\/\/[^\s,;]+|(?:www\.)?[a-z0-9][-a-z0-9.]*\.[a-z]{2,}(?:\/[^\s,;]*)?/gi;
+  const urls = raw.match(urlRe) || [];
+  let rest = raw;
+  urls.forEach((u) => { rest = rest.replace(u, ' '); });
+  const named = rest.split(/[,;]|\n+/).map(s => s.trim()).filter(Boolean);
+  const label = (s) => {
+   const t = String(s || '').trim();
+   if (!t) return '';
+   try {
+    const withProto = /^https?:\/\//i.test(t) ? t : ('https://' + t.replace(/^\/\//, ''));
+    const host = new URL(withProto).hostname.replace(/^www\./i, '');
+    if (host && host.includes('.')) return host;
+   } catch (e) {}
+   return t.replace(/^https?:\/\/*/i, '').replace(/^www\./i, '').split('/')[0] || t;
+  };
+  const parts = [];
+  const seen = new Set();
+  [...urls, ...named].forEach((item) => {
+   const v = label(item);
+   const key = (v || '').toLowerCase();
+   if (!v || key.length < 2) return;
+   if (['http', 'https', 'www'].includes(key)) return;
+   if (seen.has(key)) return;
+   seen.add(key);
+   parts.push(v);
+  });
+  submitEnrich(parts.slice(0, 3));
  });
  skip.addEventListener('click', () => {
   addUserBubble('Seguir sem adicionar');

@@ -41,16 +41,61 @@ def _extract_urls(text: str) -> list[str]:
     return re.findall(r"https?://[^\s,;]+|(?:www\.)?[a-z0-9][-a-z0-9.]*\.[a-z]{2,}(?:/[^\s,;]*)?", text, re.I)
 
 
+def _competitor_label(raw: str) -> str:
+    """Normaliza URL/dominio para um rotulo limpo (ex.: leandrotwin.com.br)."""
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    url = normalize_url(text)
+    if url:
+        host = (urlparse(url).netloc or "").replace("www.", "").strip().lower()
+        if host:
+            return host
+    # remove protocolo solto se sobrou
+    text = re.sub(r"^https?:/*", "", text, flags=re.I).strip(" /.")
+    text = text.replace("www.", "")
+    return text.split("/")[0].strip() or text
+
+
 def _split_competitors(chunk: str) -> list[str]:
-    parts = re.split(r"[,;/]| e | ou |\n", chunk, flags=re.I)
+    """Separa ate 3 concorrentes sem quebrar URLs (nao splitar em '/')."""
+    text = (chunk or "").strip()
+    if not text:
+        return []
+
+    urls = _extract_urls(text)
+    remainder = text
+    for u in urls:
+        remainder = remainder.replace(u, " ")
+
+    # Virgula, ponto-e-virgula, quebra de linha, " e ", " ou " — NUNCA "/"
+    parts = re.split(r"[,;]|\s+e\s+|\s+ou\s+|\n+", remainder, flags=re.I)
+
     out: list[str] = []
-    for p in parts:
-        name = re.sub(r"\s+", " ", p).strip(" .:-")
+    seen: set[str] = set()
+
+    def _add(label: str) -> None:
+        name = re.sub(r"\s+", " ", (label or "")).strip(" .:-")
         if not name or len(name) < 2:
-            continue
-        if name.lower() in {"nenhum", "nenhuma", "nao", "não", "n/a", "na"}:
-            continue
+            return
+        low = name.lower()
+        if low in {
+            "nenhum", "nenhuma", "nao", "não", "n/a", "na",
+            "http", "https", "http:", "https:", "www",
+        }:
+            return
+        key = low
+        if key in seen:
+            return
+        seen.add(key)
         out.append(name)
+
+    for u in urls:
+        _add(_competitor_label(u) or u)
+    for p in parts:
+        cleaned = _competitor_label(p) if ("." in p or "://" in p) else p
+        _add(cleaned)
+
     return out[:3]
 
 

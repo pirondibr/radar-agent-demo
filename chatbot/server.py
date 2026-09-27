@@ -68,7 +68,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.32"
+APP_VERSION = "1.5.33"
 
 try:
     usage_db.init_db()
@@ -875,6 +875,16 @@ def enrich_competitors():
                     parent.report = result["report"]
             job.report = (result or {}).get("report")
             job.status = "done"
+            try:
+                usage_db.finish_run(
+                    job.job_id,
+                    status="done",
+                    report_summary=usage_db.summarize_report(
+                        job.report if isinstance(job.report, dict) else None
+                    ),
+                )
+            except Exception:
+                pass
             emit(job, "enrich_complete", added=comps, report=job.report)
             emit(job, "complete", report=job.report, enrich=True)
             if parent:
@@ -882,6 +892,10 @@ def enrich_competitors():
         except Exception as e:
             job.status = "error"
             job.error = str(e)
+            try:
+                usage_db.finish_run(job.job_id, status="error", error_message=str(e))
+            except Exception:
+                pass
             emit(job, "error", message=str(e))
             if parent:
                 emit(parent, "log", line=f"Falha ao enriquecer concorrentes: {e}")
@@ -1074,6 +1088,40 @@ def admin_clear_cache():
     except Exception:
         pass
     return jsonify({"ok": True, **result})
+
+
+@app.post("/api/admin/runs/<run_id>/mark-done")
+def admin_mark_run_done(run_id: str):
+    """Forca status done/error em run preso (ex.: enrich sem finish_run)."""
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    data = request.get_json(silent=True) or {}
+    status = (data.get("status") or "done").strip().lower()
+    if status not in ("done", "error"):
+        return jsonify({"error": "status deve ser done ou error"}), 400
+    run = usage_db.get_run(run_id)
+    if not run:
+        return jsonify({"error": "Run nao encontrado"}), 404
+    try:
+        usage_db.finish_run(
+            run_id,
+            status=status,
+            error_message=(data.get("error_message") or ("Marcado manualmente no admin." if status == "error" else "")),
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True, "id": run_id, "status": status})
+
+
+@app.post("/api/admin/sweep-stale")
+def admin_sweep_stale():
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    try:
+        n = usage_db.sweep_stale_runs(max_age_sec=float(request.args.get("max_age_sec") or 7200))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True, "closed": n})
 
 
 if __name__ == "__main__":

@@ -226,6 +226,52 @@ def finish_run(
             conn.close()
 
 
+def sweep_stale_runs(max_age_sec: float = 2 * 3600) -> int:
+    """Marca como error runs ainda 'running' ha mais de max_age_sec (ex.: enrich sem finish)."""
+    init_db()
+    now = time.time()
+    cutoff = now - max_age_sec
+    with _lock:
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT id, started_at FROM runs
+                WHERE status = 'running' AND COALESCE(started_at, 0) < ?
+                """,
+                (cutoff,),
+            ).fetchall()
+            n = 0
+            for row in rows:
+                started = float(row["started_at"] or now)
+                duration_ms = int(max(0, (now - started) * 1000))
+                conn.execute(
+                    """
+                    UPDATE runs SET
+                      status = 'error',
+                      finished_at = ?,
+                      duration_ms = ?,
+                      error_message = CASE
+                        WHEN COALESCE(error_message, '') = '' THEN ?
+                        ELSE error_message
+                      END
+                    WHERE id = ? AND status = 'running'
+                    """,
+                    (
+                        now,
+                        duration_ms,
+                        "Interrompido ou timeout (status ficou em running).",
+                        row["id"],
+                    ),
+                )
+                n += 1
+            if n:
+                conn.commit()
+            return n
+        finally:
+            conn.close()
+
+
 def upsert_step(
     run_id: str,
     step_id: str,
@@ -417,6 +463,10 @@ def save_json_artifact(
 
 
 def list_runs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    try:
+        sweep_stale_runs()
+    except Exception:
+        pass
     init_db()
     with _lock:
         conn = _connect()

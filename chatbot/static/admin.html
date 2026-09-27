@@ -139,6 +139,10 @@ async function openRun(id) {
       <button type="button" class="danger" id="btnClearCache" ${run.slug ? '' : 'disabled'} title="Apaga XLSX de outputs para forçar análise ao vivo">
         Limpar cache e refazer
       </button>
+      ${(String(run.status || '').toLowerCase() === 'running') ? `
+      <button type="button" id="btnMarkDone" title="Marca este uso como concluído (se ficou preso em running)">
+        Marcar como concluído
+      </button>` : ''}
       <span class="toast" id="clearToast"></span>
     </div>
     <div class="grid">
@@ -192,6 +196,38 @@ async function openRun(id) {
   const btnClear = document.getElementById('btnClearCache');
   if (btnClear) {
     btnClear.addEventListener('click', () => clearCache(run));
+  }
+  const btnMark = document.getElementById('btnMarkDone');
+  if (btnMark) {
+    btnMark.addEventListener('click', () => markRunDone(run));
+  }
+}
+
+async function markRunDone(run) {
+  const toast = document.getElementById('clearToast');
+  const btn = document.getElementById('btnMarkDone');
+  if (!confirm(`Marcar o uso "${run.id}" como concluído?`)) return;
+  if (btn) btn.disabled = true;
+  if (toast) { toast.className = 'toast'; toast.textContent = 'Atualizando…'; }
+  try {
+    const path = '/api/admin/runs/' + encodeURIComponent(run.id) + '/mark-done' + (token ? '?token=' + encodeURIComponent(token) : '');
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (toast) { toast.className = 'toast err'; toast.textContent = data.error || ('Erro ' + res.status); }
+      return;
+    }
+    if (toast) { toast.className = 'toast ok'; toast.textContent = 'Marcado como concluído.'; }
+    await loadRuns();
+    openRun(run.id);
+  } catch (e) {
+    if (toast) { toast.className = 'toast err'; toast.textContent = String(e.message || e); }
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
