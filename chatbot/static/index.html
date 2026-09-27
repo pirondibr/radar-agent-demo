@@ -47,7 +47,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .top-sep{width:1px;height:18px;background:var(--border)}.top-status{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--green);display:flex;align-items:center;gap:5px}.top-status::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .top-right{margin-left:auto;display:flex;align-items:center;gap:12px}.top-meta{font-family:var(--mono);font-size:10px;color:var(--text-3)}
-.main{flex:1;max-width:820px;width:100%;margin:0 auto;padding:24px 20px 120px;overflow-y:auto}
+.main{flex:1;min-height:0;max-width:820px;width:100%;margin:0 auto;padding:24px 20px 120px;overflow-y:auto}
 .thread{display:flex;flex-direction:column;gap:0}
 .q-block{margin-bottom:28px}
 .q-block:has(.q-bubble.intro){margin-bottom:20px}
@@ -252,7 +252,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.31';
+const APP_VERSION = '1.5.32';
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
@@ -365,9 +365,18 @@ function mdLite(s) {
 }
 function scrollChatBottom(smooth) {
  const main = document.querySelector('.main');
- if (!main) return;
- const go = () => { main.scrollTo({ top: main.scrollHeight, behavior: smooth === false ? 'auto' : 'smooth' }); };
+ const last = thread && thread.lastElementChild;
+ const behavior = smooth === false ? 'auto' : 'smooth';
+ const go = () => {
+  if (main) {
+   main.scrollTop = main.scrollHeight;
+   main.scrollTo({ top: main.scrollHeight, behavior });
+  }
+  if (last) last.scrollIntoView({ behavior, block: 'end' });
+ };
  requestAnimationFrame(() => requestAnimationFrame(go));
+ setTimeout(go, 80);
+ setTimeout(go, 320);
 }
 function reveal(el) {
  requestAnimationFrame(() => el.classList.add('vis'));
@@ -525,7 +534,7 @@ function addBotBubble(text, intro) {
  return append(`<div class="q-block reveal">
  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
  <div class="${cls}">${mdLite(text)}</div>
- </div>`, intro ? 'start' : 'none');
+ </div>`, intro ? 'start' : 'end');
 }
 function addUserBubble(text) {
  return append(`<div class="q-block reveal" style="display:flex;flex-direction:column"><div class="user-bubble">${esc(text)}</div></div>`);
@@ -1262,8 +1271,8 @@ function renderSeoSection(seo, client) {
  const sRows = (seo.rows || []).map((r, i) => {
  const growCls = (!r.growth_fmt || r.growth_fmt === 'n/d' || r.growth_fmt === ' ') ? 'gfl' : (r.growth_hot ? 'ghot' : (r.growth_up ? 'gup' : 'gdn'));
  return `<tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}<td class="dt-val">${esc(r.traffic_fmt)}</td>
- <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,#2563eb,#60a5fa)"></div></div></td>
- <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td>${simCell(r)}</tr>`;
+ <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td>
+ <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,#2563eb,#60a5fa)"></div></div></td>${simCell(r)}</tr>`;
  }).join('');
  const seoRank = seo.client_rank ? `, voce em ${seo.client_rank}º` : '';
  const existed = !!document.querySelector('[data-section="seo"]');
@@ -1277,7 +1286,7 @@ function renderSeoSection(seo, client) {
  <div class="ac-text">Dados de visitas estimados pela empresa Semrush.</div>
  <div class="hint">*Crescimento: comparativo com até 3 anos (ou o período mais longo disponível: 2a / 1a).</div>
  <div class="table-scroll-hint" aria-hidden="true">Deslize → para ver mais colunas</div><div class="table-scroll"><table class="dtable">
- <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Trafego</th><th>Comparação</th><th style="text-align:right">Crescimento*</th><th>Similaridade</th></tr></thead>
+ <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Trafego</th><th style="text-align:right">Crescimento*</th><th>Comparação</th><th>Similaridade</th></tr></thead>
  <tbody>${sRows || '<tr><td colspan="6" class="dt-name">Sem dados de SEO</td></tr>'}</tbody>
  </table></div>
  ${analysisBlocks('seo', seo.analysis_title, seo.insight, seo.pro_hook)}
@@ -1299,8 +1308,8 @@ function renderBrandSection(brand, client) {
  const bRows = (brand.rows || []).map((r, i) => {
  const growCls = (!r.growth_fmt || r.growth_fmt === 'n/d' || r.growth_fmt === ' ') ? 'gfl' : (r.growth_hot ? 'ghot' : (r.growth_up ? 'gup' : 'gdn'));
  return `<tr class="${r.is_client ? 'is-client' : ''}">${medal(i)}${companyNameCell(r)}<td class="dt-val">${esc(r.traffic_fmt)}</td>
- <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,#0d9488,#2dd4bf)"></div></div></td>
- <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td>${simCell(r)}</tr>`;
+ <td style="text-align:right"><span class="dt-grow ${growCls}">${esc(r.growth_fmt)}</span></td>
+ <td><div class="dt-bar"><div class="dt-bar-fill" data-w="${r.bar}" style="background:linear-gradient(90deg,#0d9488,#2dd4bf)"></div></div></td>${simCell(r)}</tr>`;
  }).join('');
  const brandRank = brand.client_rank ? `, voce em ${brand.client_rank}º` : '';
  replaceSection('brand', `
@@ -1313,7 +1322,7 @@ function renderBrandSection(brand, client) {
  <div class="ac-text">Dados de pesquisa pelo nome da sua empresa no Google.</div>
  <div class="hint">*Crescimento: comparativo com até 3 anos (ou o período mais longo disponível: 2a / 1a).</div>
  <div class="table-scroll-hint" aria-hidden="true">Deslize → para ver mais colunas</div><div class="table-scroll"><table class="dtable">
- <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Buscas/mes</th><th>Comparação</th><th style="text-align:right">Crescimento*</th><th>Similaridade</th></tr></thead>
+ <thead><tr><th>#</th><th>Empresa</th><th style="text-align:right">Buscas/mes</th><th style="text-align:right">Crescimento*</th><th>Comparação</th><th>Similaridade</th></tr></thead>
  <tbody>${bRows || '<tr><td colspan="6" class="dt-name">Sem dados de marca</td></tr>'}</tbody>
  </table></div>
  ${analysisBlocks('brand', brand.analysis_title, brand.insight, brand.pro_hook)}
