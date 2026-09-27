@@ -3,12 +3,15 @@
 
 Scripts em Radar/scripts/
 Libs SEO/concorrentes em Radar/scripts/vendor/
-Outputs em Radar/outputs/{entender,concorrentes,metricas}/
+Outputs:
+  - local: Radar/outputs/{entender,concorrentes,metricas}/
+  - Render (RADAR_DATA_DIR): /var/data/outputs/...  (disco persistente)
 """
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -22,10 +25,12 @@ BASE_DIR = VENDOR_DIR
 MVP_DIR = VENDOR_DIR
 FORMULA_DIR = VENDOR_DIR / "formula"
 
-PIPELINE_OUTPUT_DIR = RADAR_ROOT / "outputs" / "entender"
-OUT_DIR = RADAR_ROOT / "outputs"
-OUT_CONCORRENTES = RADAR_ROOT / "outputs" / "concorrentes"
-OUT_METRICAS = RADAR_ROOT / "outputs" / "metricas"
+# Disco persistente no Render; local continua em Radar/outputs
+_DATA_DIR = (os.environ.get("RADAR_DATA_DIR") or "").strip()
+OUT_DIR = (Path(_DATA_DIR) / "outputs") if _DATA_DIR else (RADAR_ROOT / "outputs")
+PIPELINE_OUTPUT_DIR = OUT_DIR / "entender"
+OUT_CONCORRENTES = OUT_DIR / "concorrentes"
+OUT_METRICAS = OUT_DIR / "metricas"
 
 # Compat com codigo antigo que ainda espera FINAL_DIR = pasta dos runners
 FINAL_DIR = SCRIPTS_DIR

@@ -69,12 +69,31 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.35"
+APP_VERSION = "1.5.36"
 
 try:
     usage_db.init_db()
 except Exception as _e:
     print(f"[usage_db] init falhou: {_e}")
+
+# Outputs no disco persistente (/var/data/outputs no Render)
+try:
+    from pathlib import Path as _P
+    import shutil as _shutil
+
+    _data = (os.environ.get("RADAR_DATA_DIR") or "").strip()
+    _out = (_P(_data) / "outputs") if _data else (_P(__file__).resolve().parent.parent / "outputs")
+    for _sub in ("entender", "concorrentes", "metricas"):
+        (_out / _sub).mkdir(parents=True, exist_ok=True)
+    # Demo chatguru: copia do repo se ainda nao estiver no disco persistente
+    _demo_src = _P(__file__).resolve().parent.parent / "outputs" / "metricas" / "chatguru" / "metricas-concorrentes-chatguru.xlsx"
+    _demo_dst = _out / "metricas" / "chatguru" / "metricas-concorrentes-chatguru.xlsx"
+    if _demo_src.exists() and not _demo_dst.exists():
+        _demo_dst.parent.mkdir(parents=True, exist_ok=True)
+        _shutil.copy2(_demo_src, _demo_dst)
+        print(f"[startup] demo xlsx copiado para {_demo_dst}")
+except Exception as _e:
+    print(f"[startup] outputs init: {_e}")
 
 REQUIRED_LIVE_KEYS = (
     "OPENROUTER_API_KEY",
@@ -208,8 +227,16 @@ def _worker(job: Job) -> None:
                 status="done",
                 report_summary=usage_db.summarize_report(report if isinstance(report, dict) else None),
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[run] falha ao gravar report/finish: {e}")
+            try:
+                usage_db.finish_run(
+                    job.job_id,
+                    status="done",
+                    report_summary=usage_db.summarize_report(report if isinstance(report, dict) else None),
+                )
+            except Exception:
+                pass
         emit(job, "complete", report=report, progressive=True, extras=(kind == "extras"))
     except Exception as e:
         job.status = "error"
@@ -876,6 +903,7 @@ def enrich_competitors():
                 emit=_emit,
                 preferred_competitors=preferred,
                 demo=bool(parsed.demo),
+                run_id=job.job_id,
             )
             if parent and parent.parsed:
                 for n in comps:
@@ -902,8 +930,18 @@ def enrich_competitors():
                         job.report if isinstance(job.report, dict) else None
                     ),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[enrich] falha ao gravar report/finish: {e}")
+                try:
+                    usage_db.finish_run(
+                        job.job_id,
+                        status="done",
+                        report_summary=usage_db.summarize_report(
+                            job.report if isinstance(job.report, dict) else None
+                        ),
+                    )
+                except Exception:
+                    pass
             emit(job, "enrich_complete", added=comps, report=job.report)
             emit(job, "complete", report=job.report, enrich=True)
             if parent:
@@ -1037,6 +1075,21 @@ def admin_export_html(run_id: str):
     if not run:
         return jsonify({"error": "Run nao encontrado"}), 404
 
+    def _run_chain(start_id: str) -> list[str]:
+        """run atual + parents (enrich herda artefatos da free)."""
+        chain = [start_id]
+        seen = {start_id}
+        cur = start_id
+        for _ in range(5):
+            r = usage_db.get_run(cur)
+            parent = (r or {}).get("parent_run_id") or ""
+            if not parent or parent in seen:
+                break
+            chain.append(parent)
+            seen.add(parent)
+            cur = parent
+        return chain
+
     def _build_from_xlsx(xlsx: Path) -> Optional[dict]:
         try:
             from report_builder import build_report_from_xlsx
@@ -1050,26 +1103,33 @@ def admin_export_html(run_id: str):
             return None
 
     def _find_metricas_path() -> Optional[Path]:
-        # 1) Artefato gravado na propria run (preferencia: copia local)
-        arts = usage_db.get_run_artifacts(run_id)
-        for a in reversed(arts):
-            if a.get("kind") != "metricas_xlsx":
-                continue
-            p = Path(a.get("path") or "")
-            if p.exists():
-                return p
-            # tenta pelo nome na pasta da run
-            name = None
-            try:
-                meta = json.loads(a.get("meta_json") or "{}")
-                name = meta.get("name")
-            except Exception:
-                name = p.name if p.name else None
-            if name:
-                local = usage_db.RUNS_DIR / run_id / name
-                if local.exists():
-                    return local
-        # 2) Pasta outputs do slug
+        for rid in _run_chain(run_id):
+            arts = usage_db.get_run_artifacts(rid)
+            for a in reversed(arts):
+                if a.get("kind") != "metricas_xlsx":
+                    continue
+                p = Path(a.get("path") or "")
+                if p.exists():
+                    return p
+                name = None
+                try:
+                    meta = json.loads(a.get("meta_json") or "{}")
+                    name = meta.get("name")
+                except Exception:
+                    name = p.name if p.name else None
+                if name:
+                    local = usage_db.RUNS_DIR / rid / name
+                    if local.exists():
+                        return local
+            run_dir = usage_db.RUNS_DIR / rid
+            if run_dir.exists():
+                files = sorted(
+                    run_dir.glob("metricas-concorrentes-*.xlsx"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if files:
+                    return files[0]
         slug = (run.get("slug") or "").strip()
         if slug:
             try:
@@ -1080,16 +1140,31 @@ def admin_export_html(run_id: str):
                     return xlsx
             except Exception as e:
                 print(f"[export] find_metricas_xlsx: {e}")
-        # 3) Qualquer xlsx de metricas na pasta da run
-        run_dir = usage_db.RUNS_DIR / run_id
-        if run_dir.exists():
-            files = sorted(run_dir.glob("metricas-concorrentes-*.xlsx"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if files:
-                return files[0]
         return None
 
-    report = load_saved_report(run_id, usage_db.RUNS_DIR)
-    source = "report.json" if report else ""
+    def _load_report() -> tuple[Optional[dict], str]:
+        for rid in _run_chain(run_id):
+            rep = load_saved_report(rid, usage_db.RUNS_DIR)
+            if report_has_channel_sections(rep):
+                return rep, f"report.json:{rid}"
+        # incompleto da propria run (so concorrentes) — ainda tenta xlsx abaixo
+        own = load_saved_report(run_id, usage_db.RUNS_DIR)
+        return own, ("report.json" if own else "")
+
+    def _load_competitors_ui() -> list:
+        for rid in _run_chain(run_id):
+            for a in usage_db.get_run_artifacts(rid):
+                if a.get("kind") != "competitors_ui":
+                    continue
+                try:
+                    comps = json.loads(Path(a["path"]).read_text(encoding="utf-8"))
+                    if isinstance(comps, list) and comps:
+                        return comps
+                except Exception:
+                    continue
+        return []
+
+    report, source = _load_report()
 
     # Se so tem concorrentes (ou report incompleto), tenta remontar do XLSX
     if not report_has_channel_sections(report):
@@ -1108,35 +1183,34 @@ def admin_export_html(run_id: str):
                         step_id="export",
                         meta={"source": source},
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[export] falha save report.json: {e}")
 
     if not report:
-        comps: list = []
-        for a in usage_db.get_run_artifacts(run_id):
-            if a.get("kind") == "competitors_ui":
-                try:
-                    comps = json.loads(Path(a["path"]).read_text(encoding="utf-8"))
-                except Exception:
-                    comps = []
-                break
+        comps = _load_competitors_ui()
         report = {
             "client": run.get("company") or run.get("slug") or "Cliente",
             "briefing": {
                 "client": run.get("company") or "",
                 "url": run.get("url") or "",
                 "summary": (
-                    "Relatório parcial: não encontramos o XLSX de métricas desta run "
-                    "(Ads/SEO/Marca). Só os concorrentes salvos estão disponíveis. "
-                    "Novas análises passam a guardar o relatório completo."
+                    "Relatório parcial: o XLSX de métricas desta run não está mais no disco "
+                    "(deploy apagou outputs antigos). Concorrentes recuperados da run pai, "
+                    "se houver. Novas análises gravam tudo em disco persistente."
+                    if comps
+                    else (
+                        "Relatório parcial: não encontramos o XLSX de métricas desta run "
+                        "(Ads/SEO/Marca). Só os concorrentes salvos estão disponíveis. "
+                        "Novas análises passam a guardar o relatório completo."
+                    )
                 ),
             },
-            "competitors": comps if isinstance(comps, list) else [],
+            "competitors": comps,
             "competitors_count": len(
-                [c for c in (comps or []) if isinstance(c, dict) and not c.get("is_client")]
+                [c for c in comps if isinstance(c, dict) and not c.get("is_client")]
             ),
         }
-        source = "competitors_ui"
+        source = "competitors_ui" + (f":parent" if run.get("parent_run_id") else "")
 
     html_doc = render_report_html(report, run_meta={**run, "export_source": source})
     slug = (run.get("slug") or run.get("company") or run_id).strip() or run_id

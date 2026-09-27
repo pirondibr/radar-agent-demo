@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import threading
@@ -33,10 +34,18 @@ SCRIPT_BRAND = FINAL_DIR / "5c - brand search.py"
 SCRIPT_META = FINAL_DIR / "5d - meta ads.py"
 SCRIPT_LINKEDIN = FINAL_DIR / "5e - linkedin ads.py"
 SCRIPT_SOCIAL = FINAL_DIR / "5f - social ig yt.py"
-METRICAS_DIR = RADAR_ROOT / "outputs" / "metricas"
-BRIEFING_DIR = RADAR_ROOT / "outputs" / "entender"
-CONCORRENTES_DIR = RADAR_ROOT / "outputs" / "concorrentes"
+
+# Alinha com scripts/workspace_paths: no Render, outputs ficam no disco persistente
+_DATA_DIR = (os.environ.get("RADAR_DATA_DIR") or "").strip()
+_OUT_ROOT = (Path(_DATA_DIR) / "outputs") if _DATA_DIR else (RADAR_ROOT / "outputs")
+METRICAS_DIR = _OUT_ROOT / "metricas"
+BRIEFING_DIR = _OUT_ROOT / "entender"
+CONCORRENTES_DIR = _OUT_ROOT / "concorrentes"
 DEMO_XLSX = METRICAS_DIR / "chatguru" / "metricas-concorrentes-chatguru.xlsx"
+# Fallback demo no repo (chatguru pode nao estar no disco persistente ainda)
+_DEMO_REPO = RADAR_ROOT / "outputs" / "metricas" / "chatguru" / "metricas-concorrentes-chatguru.xlsx"
+if not DEMO_XLSX.exists() and _DEMO_REPO.exists():
+    DEMO_XLSX = _DEMO_REPO
 
 EmitFn = Callable[..., None]
 
@@ -776,6 +785,7 @@ def run_enrich_competitors(
     emit: EmitFn,
     preferred_competitors: Optional[list[str]] = None,
     demo: bool = False,
+    run_id: Optional[str] = None,
 ) -> dict:
     """Adiciona concorrentes sugeridos e reprocessa Ads + SEO + Marca (nao bloqueia o fluxo principal)."""
     slug = slug or "chatguru"
@@ -833,6 +843,7 @@ def run_enrich_competitors(
         _emit_section(emit, "google_ads", report, client_name)
         _emit_section(emit, "seo", report, client_name)
         _emit_section(emit, "brand", report, client_name)
+        _record_xlsx_artifacts(run_id, slug, "enrich")
         return {"ok": True, "added": added, "report": report, "preferred": preferred}
 
     if not SCRIPT_GOOGLE_ADS.exists():
@@ -859,6 +870,7 @@ def run_enrich_competitors(
         report = build_report_from_xlsx(xlsx, client_name=client_name, preferred_competitors=preferred)
         _emit_section(emit, "brand", report, client_name)
 
+    _record_xlsx_artifacts(run_id, slug, "enrich")
     emit("log", line=f"Relatorios atualizados com {len(names)} concorrente(s).")
     return {"ok": True, "added": added, "report": report, "preferred": preferred}
 

@@ -457,7 +457,20 @@ def save_json_artifact(
 ) -> Path:
     dest = RUNS_DIR / run_id / filename
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _default(obj: Any) -> Any:
+        if isinstance(obj, float):
+            # NaN/Inf quebram json.dumps estrito
+            if obj != obj or obj in (float("inf"), float("-inf")):
+                return None
+        if isinstance(obj, Path):
+            return str(obj)
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+    dest.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2, default=_default, allow_nan=False),
+        encoding="utf-8",
+    )
     add_artifact(run_id, kind=kind, path=str(dest), step_id=step_id, meta=meta)
     return dest
 
