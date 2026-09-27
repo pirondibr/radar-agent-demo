@@ -136,6 +136,9 @@ async function openRun(id) {
     <div class="sub">${esc(run.id)} · ${esc(run.url || '')} · ${badge(run.status)} · mode ${esc(run.mode || '—')}</div>
     ${run.error_message ? `<div class="errbox">${esc(run.error_message)}</div>` : ''}
     <div class="actions">
+      <a class="btn" id="btnExportHtml" href="/api/admin/runs/${encodeURIComponent(id)}/export.html${token ? '?token=' + encodeURIComponent(token) : ''}" target="_blank" rel="noopener">
+        Baixar relatório (HTML/PDF)
+      </a>
       <button type="button" class="danger" id="btnClearCache" ${run.slug ? '' : 'disabled'} title="Apaga XLSX de outputs para forçar análise ao vivo">
         Limpar cache e refazer
       </button>

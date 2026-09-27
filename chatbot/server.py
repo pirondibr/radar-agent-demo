@@ -42,6 +42,7 @@ from mercadopago_client import (
     mp_public_key,
 )
 from meta_capi import capi_configured, send_capi_event, track_lead_from_request
+from report_html import load_saved_report, render_report_html
 import usage_db
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -68,7 +69,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.33"
+APP_VERSION = "1.5.34"
 
 try:
     usage_db.init_db()
@@ -193,6 +194,15 @@ def _worker(job: Job) -> None:
         job.report = report
         job.status = "done"
         try:
+            if isinstance(report, dict):
+                usage_db.save_json_artifact(
+                    job.job_id,
+                    "report.json",
+                    report,
+                    kind="report",
+                    step_id="complete",
+                    meta={"client": report.get("client")},
+                )
             usage_db.finish_run(
                 job.job_id,
                 status="done",
@@ -876,6 +886,15 @@ def enrich_competitors():
             job.report = (result or {}).get("report")
             job.status = "done"
             try:
+                if isinstance(job.report, dict):
+                    usage_db.save_json_artifact(
+                        job.job_id,
+                        "report.json",
+                        job.report,
+                        kind="report",
+                        step_id="enrich",
+                        meta={"client": job.report.get("client"), "added": comps},
+                    )
                 usage_db.finish_run(
                     job.job_id,
                     status="done",
@@ -1006,6 +1025,74 @@ def admin_dashboard():
     token = (request.args.get("token") or "").strip()
     if token:
         resp.set_cookie("radar_admin_token", token, httponly=True, samesite="Lax")
+    return resp
+
+
+@app.get("/api/admin/runs/<run_id>/export.html")
+def admin_export_html(run_id: str):
+    """HTML imprimivel do relatorio da run (Salvar como PDF no navegador)."""
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    run = usage_db.get_run(run_id)
+    if not run:
+        return jsonify({"error": "Run nao encontrado"}), 404
+
+    report = load_saved_report(run_id, usage_db.RUNS_DIR)
+    if not report:
+        # Fallback: reconstrói a partir do XLSX de metricas do slug
+        slug = (run.get("slug") or "").strip()
+        if slug:
+            try:
+                from pipeline import find_metricas_xlsx
+                from report_builder import build_report_from_xlsx
+
+                xlsx = find_metricas_xlsx(slug)
+                if xlsx and xlsx.exists():
+                    report = build_report_from_xlsx(
+                        xlsx,
+                        client_name=run.get("company") or slug,
+                    )
+                    try:
+                        usage_db.save_json_artifact(
+                            run_id,
+                            "report.json",
+                            report,
+                            kind="report",
+                            step_id="export",
+                            meta={"source": "rebuild_xlsx"},
+                        )
+                    except Exception:
+                        pass
+            except Exception as e:
+                return jsonify({"error": f"Nao foi possivel montar o relatorio: {e}"}), 500
+
+    if not report:
+        # Ultimo recurso: so concorrentes salvos
+        comps = []
+        for a in usage_db.get_run_artifacts(run_id):
+            if a.get("kind") == "competitors_ui":
+                try:
+                    comps = json.loads(Path(a["path"]).read_text(encoding="utf-8"))
+                except Exception:
+                    comps = []
+                break
+        report = {
+            "client": run.get("company") or run.get("slug") or "Cliente",
+            "briefing": {
+                "client": run.get("company") or "",
+                "url": run.get("url") or "",
+                "summary": "Relatorio parcial — o JSON completo desta run nao estava salvo.",
+            },
+            "competitors": comps if isinstance(comps, list) else [],
+            "competitors_count": len([c for c in (comps or []) if isinstance(c, dict) and not c.get("is_client")]),
+        }
+
+    html_doc = render_report_html(report, run_meta=run)
+    slug = (run.get("slug") or run.get("company") or run_id).strip() or run_id
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in slug)[:60]
+    resp = Response(html_doc, mimetype="text/html; charset=utf-8")
+    resp.headers["Content-Disposition"] = f'inline; filename="radar-{safe}-{run_id}.html"'
+    resp.headers["Cache-Control"] = "no-store"
     return resp
 
 
