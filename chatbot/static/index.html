@@ -253,7 +253,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.37';
+const APP_VERSION = '1.5.38';
 
 /** Dispara gtag purchase 1x por pedido (conversao Google Ads / GA4). */
 function trackGtagPurchase(data) {
@@ -317,9 +317,10 @@ function metaTestEventCode() {
 }
 
 /** Meta Pixel + CAPI — https://www.facebook.com/business/help/402791146561655 */
-function trackMeta(eventName, params) {
+function trackMeta(eventName, params, user) {
  if (VIDEO_MODE) return;
  const payload = params || {};
+ const contact = user || {};
  const eventId = metaEventId();
  const testCode = metaTestEventCode();
 
@@ -359,6 +360,8 @@ function trackMeta(eventName, params) {
    body: JSON.stringify({
     event_name: eventName,
     custom_data: payload,
+    email: contact.email || '',
+    phone: contact.phone || '',
     event_source_url: location.href,
     event_id: eventId,
     test_event_code: testCode,
@@ -376,13 +379,37 @@ function trackMeta(eventName, params) {
  } catch (e) {}
 }
 
-function looksLikeSiteAnalysis(text) {
- const t = String(text || '').trim();
- if (!t) return false;
- if (/^demo\b/i.test(t)) return true;
- if (/https?:\/\//i.test(t)) return true;
- if (/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/.*)?$/i.test(t)) return true;
- return false;
+function contactsInText(raw) {
+ const text = String(raw || '');
+ const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+ const email = emailMatch ? emailMatch[0] : '';
+ let phone = '';
+ const chunks = text.match(/(?:\+?\d[\d\s().-]{8,}\d)/g) || [];
+ for (let i = 0; i < chunks.length; i++) {
+  const digits = chunks[i].replace(/\D/g, '');
+  if (digits.length >= 10 && digits.length <= 13) {
+   phone = digits;
+   break;
+  }
+ }
+ return { email, phone };
+}
+
+function trackCheckoutOpen(data) {
+ const orderId = (data && data.order_id) || '';
+ if (!orderId) return;
+ if (!window.__mpCheckoutTracked) window.__mpCheckoutTracked = new Set();
+ if (window.__mpCheckoutTracked.has(orderId)) return;
+ window.__mpCheckoutTracked.add(orderId);
+ const product = (data && data.product) || '';
+ const value = Number(data && data.amount);
+ trackMeta('InitiateCheckout', {
+  currency: 'BRL',
+  value: Number.isFinite(value) ? value : (product === 'extras_pack' ? (window.__extrasPrice || 99) : (window.__proPrice || 99)),
+  content_name: product === 'extras_pack' ? 'Radar Canais Extra' : ('Radar Pro' + (data.channel ? ' — ' + data.channel : '')),
+  content_ids: [orderId],
+  num_items: 1,
+ });
 }
 
 let busy = false;
@@ -848,6 +875,7 @@ async function openMercadoPagoCheckout(pending) {
     btnOpen.disabled = false;
     return;
    }
+   trackCheckoutOpen(data);
    window.open(url, 'radar_mp_checkout');
    btnCheck.hidden = false;
    btnOpen.disabled = false;
@@ -923,6 +951,16 @@ async function submitPendingContact(rawContact) {
    leadId: data.lead_id || '',
   };
   contactPending = next;
+  const found = contactsInText(rawContact);
+  trackMeta('Lead', {
+   content_name: 'Radar Pro',
+   content_category: pending.channel || 'pro',
+   currency: 'BRL',
+   value: window.__proPrice || 99,
+  }, {
+   email: found.email || (String(contact).includes('@') ? contact : ''),
+   phone: found.phone || (String(contact).includes('@') ? '' : contact),
+  });
   addBotBubble(
    `Perfeito, **${name || 'registrado'}**! Salvei seu contato. Agora vou abrir o **Mercado Pago** para o pagamento da análise Pro.`
   );
@@ -1103,6 +1141,7 @@ async function startExtrasCheckout(root, btn) {
    if (btn) btn.disabled = false;
    return;
   }
+  trackCheckoutOpen(data);
   window.open(url, 'radar_mp_checkout');
   if (hint) hint.textContent = 'Janela do Mercado Pago aberta (PIX ou cartão). Esta aba do chat continua aqui — depois clique em verificar se não avançar sozinho.';
   if (btn) {
@@ -1815,11 +1854,6 @@ async function sendMessage() {
   return;
  }
 
- // Lead vai pelo servidor (Conversions API) em /api/chat — nao depende do browser
- if (looksLikeSiteAnalysis(text)) {
-  console.info('[Meta] Lead sera enviado pelo servidor (CAPI) ao iniciar a analise.');
- }
-
  setBusy(true);
 
  let jobId;
@@ -1834,12 +1868,6 @@ async function sendMessage() {
  append(`<div class="q-block reveal"><div class="err-card">${esc(data.error || 'Erro')}</div></div>`);
  setBusy(false);
  return;
- }
- if (data.meta_lead) {
-  console.info('[Meta CAPI Lead]', data.meta_lead);
-  if (data.meta_lead.skipped) {
-   console.warn('[Meta CAPI] Configure META_CAPI_ACCESS_TOKEN no Render.');
-  }
  }
  jobId = data.job_id;
  stepDefs = data.steps || stepDefs;

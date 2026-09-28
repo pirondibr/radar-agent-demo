@@ -41,7 +41,7 @@ from mercadopago_client import (
     mp_configured,
     mp_public_key,
 )
-from meta_capi import capi_configured, send_capi_event, track_lead_from_request
+from meta_capi import capi_configured, send_capi_event
 from report_html import load_saved_report, render_report_html, report_has_channel_sections
 import usage_db
 
@@ -69,7 +69,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.37"
+APP_VERSION = "1.5.38"
 
 try:
     usage_db.init_db()
@@ -340,6 +340,8 @@ def meta_capi_event():
         user_agent=(request.headers.get("User-Agent") or "")[:512],
         event_id=str(data.get("event_id") or "").strip(),
         test_event_code=str(data.get("test_event_code") or "").strip(),
+        email=str(data.get("email") or "").strip(),
+        phone=str(data.get("phone") or "").strip(),
     )
     status = 200 if result.get("ok") or result.get("skipped") else 502
     return jsonify(result), status
@@ -417,23 +419,6 @@ def chat():
 
     threading.Thread(target=_worker, args=(job,), daemon=True).start()
 
-    # Lead via Conversions API (servidor) — nao depende do Pixel no browser
-    meta_lead = None
-    try:
-        meta_lead = track_lead_from_request(
-            company=parsed.company or "",
-            slug=parsed.slug or "",
-            url=parsed.url or "",
-            demo=bool(parsed.demo),
-            request_obj=request,
-            event_source_url=(
-                os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/") + "/"
-            ),
-        )
-    except Exception as e:
-        print(f"[meta_capi] Lead falhou: {e}", flush=True)
-        meta_lead = {"ok": False, "error": str(e)}
-
     return jsonify({
         "job_id": job_id,
         "parsed": {
@@ -446,7 +431,6 @@ def chat():
         "steps": STEP_DEFS,
         "ack": _ack_message(parsed),
         "demo_only": DEMO_ONLY,
-        "meta_lead": meta_lead,
     })
 
 

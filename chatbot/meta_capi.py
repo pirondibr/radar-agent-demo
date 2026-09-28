@@ -6,6 +6,7 @@ Docs: https://developers.facebook.com/docs/marketing-api/conversions-api/using-t
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 import uuid
@@ -32,6 +33,22 @@ def capi_configured() -> bool:
     return bool(capi_access_token() and meta_pixel_id())
 
 
+def _sha256(value: str) -> str:
+    text = "".join((value or "").strip().lower().split())
+    if not text:
+        return ""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _phone_digits(value: str) -> str:
+    digits = "".join(ch for ch in (value or "") if ch.isdigit())
+    if not digits:
+        return ""
+    if not digits.startswith("55") and len(digits) >= 10:
+        return "55" + digits
+    return digits
+
+
 def send_capi_event(
     event_name: str,
     *,
@@ -41,6 +58,8 @@ def send_capi_event(
     user_agent: str = "",
     event_id: str = "",
     test_event_code: str = "",
+    email: str = "",
+    phone: str = "",
 ) -> dict[str, Any]:
     token = capi_access_token()
     pixel_id = meta_pixel_id()
@@ -62,6 +81,12 @@ def send_capi_event(
         user_data["client_ip_address"] = client_ip
     if user_agent:
         user_data["client_user_agent"] = user_agent
+    em = _sha256(email)
+    ph = _sha256(_phone_digits(phone))
+    if em:
+        user_data["em"] = [em]
+    if ph:
+        user_data["ph"] = [ph]
 
     event: dict[str, Any] = {
         "event_name": event_name,
