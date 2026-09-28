@@ -69,7 +69,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.36"
+APP_VERSION = "1.5.37"
 
 try:
     usage_db.init_db()
@@ -500,7 +500,9 @@ def checkout_status(order_id: str):
         "status": order.get("status"),
         "mp_status": order.get("mp_status"),
         "channel": order.get("channel"),
+        "product": order.get("product"),
         "amount": order.get("amount"),
+        "currency": order.get("currency") or "BRL",
         "paid": order.get("status") == "paid",
         "preference_id": order.get("preference_id"),
         "init_point": order.get("init_point"),

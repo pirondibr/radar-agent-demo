@@ -27,6 +27,7 @@ fbq('track', 'PageView');
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
   gtag('config', 'G-9JFVQ7LWR8');
+  // Conversao Google Ads / GA4: disparada so apos pagamento confirmado (ver trackGtagPurchase)
 </script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
@@ -252,7 +253,41 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.36';
+const APP_VERSION = '1.5.37';
+
+/** Dispara gtag purchase 1x por pedido (conversao Google Ads / GA4). */
+function trackGtagPurchase(data) {
+  if (typeof gtag !== 'function') return;
+  const orderId = String((data && data.order_id) || '').trim();
+  if (!orderId) return;
+  if (!window.__gtagPurchases) window.__gtagPurchases = new Set();
+  if (window.__gtagPurchases.has(orderId)) return;
+  window.__gtagPurchases.add(orderId);
+  const value = Number(data.amount);
+  const currency = String((data && data.currency) || 'BRL');
+  const product = String((data && data.product) || 'deep_channel');
+  const channel = String((data && data.channel) || '');
+  const itemName =
+    product === 'extras_pack'
+      ? 'Radar Canais Extra'
+      : ('Radar Pro' + (channel ? ' — ' + channel : ''));
+  const payload = {
+    transaction_id: orderId,
+    value: Number.isFinite(value) ? value : 0,
+    currency: currency,
+    items: [{
+      item_id: product,
+      item_name: itemName,
+      price: Number.isFinite(value) ? value : 0,
+      quantity: 1,
+    }],
+  };
+  try {
+    gtag('event', 'purchase', payload);
+  } catch (e) {
+    console.warn('[gtag] purchase failed', e);
+  }
+}
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
@@ -750,6 +785,7 @@ async function openMercadoPagoCheckout(pending) {
     if (paidDone) return true;
     paidDone = true;
     window.__mpConfirmedOrders.add(orderId);
+    trackGtagPurchase(data);
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     try { sessionStorage.removeItem('radar_mp_pending'); } catch (e) {}
     contactPending = null;
@@ -1020,6 +1056,7 @@ async function startExtrasCheckout(root, btn) {
    const data = await res.json();
    if (data.paid) {
     started = true;
+    trackGtagPurchase(data);
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     if (hint) hint.textContent = 'Pagamento confirmado. Iniciando canais extra...';
     if (btn) btn.disabled = true;
