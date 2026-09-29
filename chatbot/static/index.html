@@ -253,7 +253,40 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.38';
+const APP_VERSION = '1.5.39';
+
+/** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
+function captureAttribution() {
+  const KEY = 'radar_attr';
+  const qs = new URLSearchParams(location.search);
+  const keys = [
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
+    'gclid', 'fbclid', 'msclkid', 'ttclid',
+  ];
+  let prev = {};
+  try { prev = JSON.parse(sessionStorage.getItem(KEY) || '{}') || {}; } catch (e) { prev = {}; }
+  const next = { ...prev };
+  let touched = false;
+  keys.forEach((k) => {
+    const v = (qs.get(k) || '').trim();
+    if (v) { next[k] = v; touched = true; }
+  });
+  if (!next.landing) next.landing = location.href.split('#')[0];
+  if (!next.referrer && document.referrer) next.referrer = document.referrer;
+  // last-click: se veio gclid/fbclid agora, sobrescreve
+  if (touched || !sessionStorage.getItem(KEY)) {
+    try { sessionStorage.setItem(KEY, JSON.stringify(next)); } catch (e) {}
+  }
+  return next;
+}
+function getAttribution() {
+  try {
+    const raw = sessionStorage.getItem('radar_attr');
+    if (raw) return JSON.parse(raw) || {};
+  } catch (e) {}
+  return captureAttribution();
+}
+captureAttribution();
 
 /** Dispara gtag purchase 1x por pedido (conversao Google Ads / GA4). */
 function trackGtagPurchase(data) {
@@ -935,6 +968,7 @@ async function submitPendingContact(rawContact) {
     company: pending.company || analysisCtx.company || '',
     slug: pending.slug || analysisCtx.slug || '',
     job_id: pending.job_id || analysisCtx.job_id || '',
+    attribution: getAttribution(),
    }),
   });
   const data = await res.json();
@@ -1541,7 +1575,7 @@ async function startVideoDemo() {
   const res = await fetch('/api/chat', {
    method: 'POST',
    headers: { 'Content-Type': 'application/json' },
-   body: JSON.stringify({ message: 'demo chatguru' }),
+   body: JSON.stringify({ message: 'demo chatguru', attribution: getAttribution() }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -1595,6 +1629,7 @@ async function startExtrasJob() {
     company: analysisCtx.company || '',
     demo: VIDEO_MODE ? true : !!analysisCtx.demo,
     job_id: analysisCtx.job_id || '',
+    attribution: getAttribution(),
    }),
   });
   const data = await res.json();
@@ -1688,6 +1723,7 @@ function showExtraCompetitorsPrompt(jobId, msg) {
      company: analysisCtx.company || '',
      demo: !!analysisCtx.demo,
      competitors: parts,
+     attribution: getAttribution(),
     }),
    });
    const data = await res.json();
@@ -1861,7 +1897,7 @@ async function sendMessage() {
  const res = await fetch('/api/chat', {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ message: text }),
+ body: JSON.stringify({ message: text, attribution: getAttribution() }),
  });
  const data = await res.json();
  if (!res.ok) {

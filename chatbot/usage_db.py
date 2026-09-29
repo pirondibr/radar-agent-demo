@@ -125,6 +125,16 @@ def init_db() -> None:
                 CREATE INDEX IF NOT EXISTS idx_leads_ts ON leads(ts DESC);
                 """
             )
+            # Colunas de origem (idempotente)
+            for ddl in (
+                "ALTER TABLE runs ADD COLUMN traffic_source TEXT",
+                "ALTER TABLE runs ADD COLUMN attribution_json TEXT",
+                "ALTER TABLE leads ADD COLUMN traffic_source TEXT",
+            ):
+                try:
+                    conn.execute(ddl)
+                except Exception:
+                    pass
             conn.commit()
             _initialized = True
         finally:
@@ -143,9 +153,12 @@ def create_run(
     parent_run_id: str = "",
     user_agent: str = "",
     ip: str = "",
+    traffic_source: str = "",
+    attribution: Optional[dict[str, Any]] = None,
 ) -> None:
     init_db()
     now = time.time()
+    attr_json = json.dumps(attribution or {}, ensure_ascii=False) if attribution else None
     with _lock:
         conn = _connect()
         try:
@@ -154,8 +167,8 @@ def create_run(
                 INSERT OR REPLACE INTO runs (
                   id, kind, status, company, slug, url, demo,
                   preferred_competitors_json, parent_run_id,
-                  started_at, user_agent, ip
-                ) VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  started_at, user_agent, ip, traffic_source, attribution_json
+                ) VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -169,6 +182,8 @@ def create_run(
                     now,
                     user_agent or "",
                     ip or "",
+                    (traffic_source or "")[:80] or None,
+                    attr_json,
                 ),
             )
             conn.commit()
@@ -604,12 +619,37 @@ def save_lead(lead: dict[str, Any]) -> None:
                 conn.execute("ALTER TABLE leads ADD COLUMN name TEXT")
             except Exception:
                 pass
+            try:
+                conn.execute("ALTER TABLE leads ADD COLUMN traffic_source TEXT")
+            except Exception:
+                pass
+            meta = {
+                k: v
+                for k, v in lead.items()
+                if k
+                not in {
+                    "id",
+                    "ts",
+                    "offer",
+                    "channel",
+                    "name",
+                    "contact_type",
+                    "contact",
+                    "company",
+                    "slug",
+                    "job_id",
+                    "order_id",
+                    "paid",
+                    "status",
+                    "traffic_source",
+                }
+            }
             conn.execute(
                 """
                 INSERT OR REPLACE INTO leads (
                   id, ts, offer, channel, name, contact_type, contact,
-                  company, slug, job_id, order_id, paid, status, meta_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  company, slug, job_id, order_id, paid, status, meta_json, traffic_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     lead.get("id") or "",
@@ -625,13 +665,8 @@ def save_lead(lead: dict[str, Any]) -> None:
                     lead.get("order_id") or "",
                     1 if lead.get("paid") else 0,
                     lead.get("status") or "pending_manual",
-                    json.dumps(
-                        {k: v for k, v in lead.items() if k not in {
-                            "id", "ts", "offer", "channel", "name", "contact_type", "contact",
-                            "company", "slug", "job_id", "order_id", "paid", "status",
-                        }},
-                        ensure_ascii=False,
-                    ),
+                    json.dumps(meta, ensure_ascii=False) if meta else None,
+                    (lead.get("traffic_source") or "")[:80] or None,
                 ),
             )
             conn.commit()

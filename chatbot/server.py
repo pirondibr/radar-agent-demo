@@ -42,6 +42,7 @@ from mercadopago_client import (
     mp_public_key,
 )
 from meta_capi import capi_configured, send_capi_event
+from attribution import classify_traffic_source, normalize_attribution
 from report_html import load_saved_report, render_report_html, report_has_channel_sections
 import usage_db
 
@@ -69,7 +70,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.38"
+APP_VERSION = "1.5.39"
 
 try:
     usage_db.init_db()
@@ -116,6 +117,16 @@ def _live_keys_ready() -> dict[str, bool]:
 
 def _missing_live_keys() -> list[str]:
     return [k for k, ok in _live_keys_ready().items() if not ok]
+
+
+def _attribution_from_payload(data: Optional[dict] = None) -> tuple[str, dict]:
+    """Extrai atribuicao do body JSON (browser) e classifica origem."""
+    payload = data if isinstance(data, dict) else {}
+    attr = normalize_attribution(payload.get("attribution") or {})
+    if not attr:
+        # aceita campos soltos no body (utm_*, gclid, etc.)
+        attr = normalize_attribution(payload)
+    return classify_traffic_source(attr), attr
 
 
 @dataclass
@@ -401,6 +412,7 @@ def chat():
     for s in STEP_DEFS:
         job.steps[s["id"]] = {"state": "pending", "detail": "", "at": 0}
     jobs[job_id] = job
+    traffic_source, attribution = _attribution_from_payload(data)
     try:
         usage_db.create_run(
             run_id=job_id,
@@ -412,8 +424,13 @@ def chat():
             preferred_competitors=parsed.competitors or [],
             user_agent=request.headers.get("User-Agent", "")[:300],
             ip=(request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:80],
+            traffic_source=traffic_source,
+            attribution=attribution,
         )
-        usage_db.append_log(job_id, f"Uso iniciado: {parsed.company or parsed.slug} ({parsed.url or 'sem url'})")
+        usage_db.append_log(
+            job_id,
+            f"Uso iniciado: {parsed.company or parsed.slug} ({parsed.url or 'sem url'}) · origem={traffic_source}",
+        )
     except Exception as e:
         print(f"[usage_db] create_run falhou: {e}")
 
@@ -676,6 +693,10 @@ def create_lead():
         "paid": paid,
         "pre_payment": pre_payment,
     }
+    traffic_source, attribution = _attribution_from_payload(data)
+    lead["traffic_source"] = traffic_source
+    if attribution:
+        lead["attribution"] = attribution
     LEADS_DIR.mkdir(parents=True, exist_ok=True)
     with LEADS_FILE.open("a", encoding="utf-8") as f:
         f.write(json.dumps(lead, ensure_ascii=False) + "\n")
@@ -684,7 +705,7 @@ def create_lead():
     except Exception as e:
         print(f"[LEAD] sqlite save failed: {e}")
     print(
-        f"[LEAD] {lead['id']} paid={paid} pre={pre_payment} "
+        f"[LEAD] {lead['id']} paid={paid} pre={pre_payment} origem={traffic_source} "
         f"{lead['channel']} name={name!r} {lead['contact_type']}={lead['contact']}"
     )
     label = "e-mail" if contact_type == "email" else "WhatsApp"
@@ -743,6 +764,7 @@ def start_extras():
     for s in EXTRA_STEP_DEFS:
         job.steps[s["id"]] = {"state": "pending", "detail": "", "at": 0}
     jobs[job_id] = job
+    traffic_source, attribution = _attribution_from_payload(data)
     try:
         usage_db.create_run(
             run_id=job_id,
@@ -754,8 +776,10 @@ def start_extras():
             parent_run_id=job_id_src,
             user_agent=request.headers.get("User-Agent", "")[:300],
             ip=(request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:80],
+            traffic_source=traffic_source,
+            attribution=attribution,
         )
-        usage_db.append_log(job_id, f"Canais extra iniciados: {company} / {slug}")
+        usage_db.append_log(job_id, f"Canais extra iniciados: {company} / {slug} · origem={traffic_source}")
     except Exception as e:
         print(f"[usage_db] create_run extras falhou: {e}")
     threading.Thread(target=_worker, args=(job,), daemon=True).start()
@@ -945,6 +969,7 @@ def enrich_competitors():
                 emit(parent, "enrich_error", message=str(e))
 
     try:
+        traffic_source, attribution = _attribution_from_payload(data)
         usage_db.create_run(
             run_id=job_id,
             kind="enrich",
@@ -953,6 +978,8 @@ def enrich_competitors():
             demo=bool(parsed.demo),
             preferred_competitors=comps,
             parent_run_id=parent_job_id,
+            traffic_source=traffic_source,
+            attribution=attribution,
         )
     except Exception:
         pass
