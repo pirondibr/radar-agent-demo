@@ -172,6 +172,14 @@ def render_report_html(
   .toolbar {{ position:sticky; top:0; background:rgba(255,255,255,.92); backdrop-filter:blur(6px); padding:10px 0 14px; margin-bottom:8px; display:flex; gap:8px; flex-wrap:wrap; z-index:5; }}
   .toolbar button {{ border:1px solid var(--border); background:#fff; border-radius:8px; padding:8px 12px; font:inherit; font-size:13px; font-weight:600; cursor:pointer; }}
   .toolbar button.primary {{ background:var(--accent); color:#fff; border-color:var(--accent); }}
+  @media (max-width: 640px) {{
+    body {{ padding:16px 12px 48px; }}
+    h1 {{ font-size:22px; }}
+    .card {{ padding:14px 12px; }}
+    .table-wrap {{ -webkit-overflow-scrolling:touch; }}
+    table {{ min-width:560px; }}
+    .toolbar button {{ min-height:44px; }}
+  }}
   @media print {{
     .toolbar {{ display:none !important; }}
     body {{ padding:0; }}

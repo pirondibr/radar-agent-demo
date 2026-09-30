@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="facebook-domain-verification" content="cty0k7eqhho4hlo8cbtq7v65rl0od4" />
 <title>Radar da Concorrência | Consultor de Marketing</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -179,7 +179,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .wa-fab{position:fixed;right:18px;bottom:88px;z-index:95;display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:999px;background:#25D366;color:#fff;font-weight:800;font-size:13px;text-decoration:none;font-family:inherit;box-shadow:0 8px 24px rgba(37,211,102,.35)}
 .wa-fab:hover{filter:brightness(1.05);color:#fff}
 .wa-fab svg{width:20px;height:20px;flex-shrink:0}
-@media(max-width:640px){.wa-fab{right:12px;bottom:78px;padding:11px 14px;font-size:12px}.wa-fab .wa-fab-label{display:none}}
+@media(max-width:640px){.wa-fab{right:12px;bottom:calc(118px + env(safe-area-inset-bottom));padding:12px;font-size:12px}.wa-fab .wa-fab-label{display:none}}
 body.video-mode .composer,body.video-mode .wa-fab{display:none !important}
 body.video-mode .main{padding-bottom:24px}
 .reveal{opacity:0;transform:translateY(12px);transition:all .45s cubic-bezier(.16,1,.3,1)}.reveal.vis{opacity:1;transform:none}
@@ -208,20 +208,33 @@ body.video-mode .main{padding-bottom:24px}
 .pay-form > input{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px;box-sizing:border-box}
 .pay-form > button[data-contact-send]{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;align-self:flex-start}
 @media(max-width:640px){
-.main{padding:16px 12px 130px}
+.top{padding:10px 12px}
+.top-name{font-size:13px}
+.main{padding:14px 12px calc(132px + env(safe-area-inset-bottom))}
+.q-bubble{padding:16px;font-size:15px}
+.q-bubble.intro{padding:16px;font-size:15px}
 .dtable{font-size:11px}
 .hero-val{font-size:28px}
 .top-meta,.top-sep,.top-status{display:none}
 .top-version{font-size:9px;padding:2px 6px}
-.comp-row{flex-wrap:wrap}
-.pro-cta{flex-direction:column;align-items:stretch}
-.pro-cta-btn{width:100%;text-align:center}
+.comp-row{flex-wrap:wrap;align-items:flex-start}
+.comp-name{min-width:0}
+.comp-meta{margin-left:0;width:100%}
+.pro-cta,.finale-cta,.pdf-export-actions{flex-direction:column;align-items:stretch}
+.pro-cta-btn,.finale-btn,.pdf-export-actions .finale-btn{width:100%;text-align:center;min-height:44px}
+.pay-choice button{min-height:44px}
 .table-scroll{margin:8px -4px 0;border-radius:10px 10px 0 0}
 .table-scroll::-webkit-scrollbar{height:12px}
 .table-scroll-hint{display:block}
 .table-hscroll{margin:0 -4px 14px}
 .dtable thead th:nth-child(2),.dtable tbody td:nth-child(2){min-width:108px;max-width:132px}
-.answer-card{padding:18px 14px;margin-left:4px}
+.answer-card,.progress-card,.steps,.err-card{margin-left:0}
+.answer-card{padding:16px 12px}
+.user-bubble{max-width:92%}
+.composer{padding:8px 10px calc(10px + env(safe-area-inset-bottom))}
+.composer-inner{align-items:center;gap:8px;padding:6px}
+.composer input{font-size:16px;min-width:0;padding:12px 10px}
+.composer button{flex-shrink:0;min-height:44px;padding:12px 14px}
 }
 </style>
 </head>
@@ -253,7 +266,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.44';
+const APP_VERSION = '1.5.45';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
