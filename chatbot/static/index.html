@@ -266,7 +266,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.46';
+const APP_VERSION = '1.5.47';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -1794,7 +1794,7 @@ async function boot() {
    true
   );
   setTimeout(() => {
-   const askNode = addBotBubble('Insira seu **Site** e número de **WhatsApp** para receber uma análise de mercado gratuita:', true);
+   const askNode = addBotBubble('Insira seu **Site** e número de **WhatsApp** para receber uma análise de concorrencia gratuita:', true);
    const hint = document.createElement('div');
    hint.className = 'hint';
    hint.innerHTML = 'Exemplo: <code>seusite.com.br, 11999999999</code>';
