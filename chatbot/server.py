@@ -70,7 +70,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.41"
+APP_VERSION = "1.5.42"
 
 try:
     usage_db.init_db()
@@ -288,6 +288,15 @@ def video_demo():
     return resp
 
 
+@app.get("/47")
+def offer_47():
+    """Funil /47: dados dos canais, sem Pro, canais extra a R$ 47."""
+    resp = send_from_directory(STATIC_DIR, "index.html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.get("/api/hello")
 def hello():
     keys = _live_keys_ready()
@@ -463,11 +472,14 @@ def chat():
             contact=whatsapp,
             contact_type="whatsapp" if whatsapp else "",
         )
+        funnel = str((attribution or {}).get("funnel") or "")
+        radar_mark = " · radar=/47" if funnel == "radar_47" else ""
         usage_db.append_log(
             job_id,
             f"Uso iniciado: {parsed.company or parsed.slug} ({parsed.url or 'sem url'}) "
             f"· origem={traffic_source}"
-            + (f" · whatsapp={whatsapp}" if whatsapp else ""),
+            + (f" · whatsapp={whatsapp}" if whatsapp else "")
+            + radar_mark,
         )
     except Exception as e:
         print(f"[usage_db] create_run falhou: {e}")
@@ -546,12 +558,20 @@ def checkout():
             "payments_ready": False,
         }), 503
     try:
+        product = (data.get("product") or "deep_channel").strip().lower()
+        funnel = (data.get("funnel") or "").strip()
+        if not funnel:
+            raw_attr = data.get("attribution") if isinstance(data.get("attribution"), dict) else {}
+            funnel = str(raw_attr.get("funnel") or "").strip()
+        unit_price = 47.0 if funnel == "radar_47" and product == "extras_pack" else None
         result = create_pro_checkout(
             channel=channel,
             company=(data.get("company") or "").strip(),
             slug=(data.get("slug") or "").strip(),
             job_id=(data.get("job_id") or "").strip(),
-            product=(data.get("product") or "deep_channel").strip().lower(),
+            product=product,
+            unit_price=unit_price,
+            funnel=funnel,
         )
         return jsonify({"ok": True, **result})
     except Exception as e:
@@ -716,12 +736,17 @@ def create_lead():
                     "error": "Envie um e-mail (ex: seu@email.com) ou WhatsApp com DDD (ex: 11999999999).",
                 }), 400
 
+    capture_only = bool(data.get("capture_only"))
     paid = False
     status = "awaiting_payment" if pre_payment else "pending_manual"
     offer = (data.get("offer") or "deep_channel").strip()
     free_lead = bool(data.get("free")) or offer in ("free_analysis", "free", "analise-gratuita")
 
-    if free_lead:
+    if capture_only:
+        paid = False
+        status = "captured"
+        pre_payment = False
+    elif free_lead:
         paid = False
         status = "free_lead"
         offer = "free_analysis"
@@ -761,7 +786,7 @@ def create_lead():
         "slug": (data.get("slug") or "").strip(),
         "job_id": (data.get("job_id") or "").strip(),
         "order_id": order_id,
-        "simulated_payment": not paid and not pre_payment and not free_lead,
+        "simulated_payment": (not paid and not pre_payment and not free_lead and not capture_only),
         "status": status,
         "paid": paid,
         "pre_payment": pre_payment,
@@ -778,11 +803,39 @@ def create_lead():
         usage_db.save_lead(lead)
     except Exception as e:
         print(f"[LEAD] sqlite save failed: {e}")
+    job_for_log = (lead.get("job_id") or "").strip()
+    funnel = str((attribution or {}).get("funnel") or "")
+    if capture_only and job_for_log:
+        try:
+            usage_db.merge_attribution(job_for_log, {
+                "funnel": funnel or "radar_47",
+                "whatsapp": contact if contact_type == "whatsapp" else "",
+                "contact": contact,
+            })
+            usage_db.append_log(
+                job_for_log,
+                f"Contato informado no Radar /47 ({contact_type}): {contact}",
+                source="lead",
+            )
+        except Exception as e:
+            print(f"[LEAD] log do contato falhou: {e}")
     print(
-        f"[LEAD] {lead['id']} paid={paid} pre={pre_payment} origem={traffic_source} "
+        f"[LEAD] {lead['id']} paid={paid} pre={pre_payment} capture={capture_only} "
+        f"origem={traffic_source} funnel={funnel or '-'} "
         f"{lead['channel']} name={name!r} {lead['contact_type']}={lead['contact']}"
     )
     label = "e-mail" if contact_type == "email" else "WhatsApp"
+    if capture_only:
+        msg = f"WhatsApp registrado para esta análise."
+        return jsonify({
+            "ok": True,
+            "lead_id": lead["id"],
+            "paid": False,
+            "name": name,
+            "contact_type": contact_type,
+            "status": status,
+            "message": msg,
+        })
     if pre_payment:
         msg = (
             f"Dados salvos ({name or 'lead'} / {label}). "

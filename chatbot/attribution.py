@@ -24,6 +24,7 @@ def normalize_attribution(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
         "ttclid",
         "referrer",
         "landing",
+        "funnel",
     ):
         val = raw.get(key)
         if val is None:

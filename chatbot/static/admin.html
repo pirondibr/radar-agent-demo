@@ -36,6 +36,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .b-src-meta{background:rgba(24,119,242,.18);color:#93c5fd}
 .b-src-organic{background:rgba(16,185,129,.15);color:#6ee7b7}
 .b-src-direct{background:rgba(139,147,167,.15);color:#cbd5e1}
+.b-funnel{background:rgba(245,158,11,.18);color:#fcd34d;text-transform:none}
 .detail{padding:18px 20px;overflow:auto;max-height:calc(100vh - 52px)}
 .empty{color:var(--muted);padding:40px;text-align:center}
 h2{font-size:18px;margin-bottom:6px}
@@ -88,6 +89,17 @@ function badge(status) {
   const cls = s === 'done' ? 'b-done' : (s === 'error' ? 'b-error' : (s === 'running' ? 'b-running' : 'b-pending'));
   return `<span class="badge ${cls}">${s || '?'}</span>`;
 }
+function readAttr(run) {
+  try { return JSON.parse((run && run.attribution_json) || '{}') || {}; } catch (e) { return {}; }
+}
+function funnelBadge(run) {
+  const attr = readAttr(run);
+  const landing = String(attr.landing || '');
+  if (attr.funnel === 'radar_47' || /\/47(\/|\?|$)/.test(landing)) {
+    return '<span class="badge b-funnel" title="Consulta vinda de /47">Radar /47</span>';
+  }
+  return '';
+}
 function sourceBadge(src) {
   const s = (src || '').trim() || '—';
   let cls = 'b-src';
@@ -122,6 +134,7 @@ async function loadRuns() {
         <span>${esc(r.kind || 'free')}</span>
         <span>${esc(r.mode || '—')}</span>
         ${sourceBadge(r.traffic_source)}
+        ${funnelBadge(r)}
         ${r.contact ? `<span title="WhatsApp">WA ${esc(r.contact)}</span>` : ''}
         <span>${fmtTs(r.started_at)}</span>
         <span>${fmtMs(r.duration_ms)}</span>
@@ -157,11 +170,14 @@ async function openRun(id) {
     attr.gclid && 'gclid',
     attr.fbclid && 'fbclid',
     attr.referrer && ('ref=' + attr.referrer),
+    attr.landing && ('landing=' + attr.landing),
+    attr.funnel && ('funnel=' + attr.funnel),
+    (attr.whatsapp || attr.contact) && ('whatsapp=' + (attr.whatsapp || attr.contact)),
   ].filter(Boolean);
 
   detail.innerHTML = `
     <h2>${esc(run.company || run.slug || run.id)}</h2>
-    <div class="sub">${esc(run.id)} · ${esc(run.url || '')} · ${badge(run.status)} · mode ${esc(run.mode || '—')} · ${sourceBadge(run.traffic_source)}</div>
+    <div class="sub">${esc(run.id)} · ${esc(run.url || '')} · ${badge(run.status)} · mode ${esc(run.mode || '—')} · ${sourceBadge(run.traffic_source)} ${funnelBadge(run)}</div>
     ${run.error_message ? `<div class="errbox">${esc(run.error_message)}</div>` : ''}
     <div class="actions">
       <a class="btn" id="btnExportHtml" href="/api/admin/runs/${encodeURIComponent(id)}/export.html${token ? '?token=' + encodeURIComponent(token) : ''}" target="_blank" rel="noopener">
@@ -177,8 +193,8 @@ async function openRun(id) {
       <span class="toast" id="clearToast"></span>
     </div>
     <div class="grid">
-      <div class="card"><div class="k">Origem</div><div class="v" style="font-size:14px">${esc(run.traffic_source || '—')}</div></div>
-      <div class="card"><div class="k">WhatsApp</div><div class="v" style="font-size:14px">${esc(run.contact || '—')}</div></div>
+      <div class="card"><div class="k">Origem</div><div class="v" style="font-size:14px">${esc(run.traffic_source || '—')} ${funnelBadge(run)}</div></div>
+      <div class="card"><div class="k">WhatsApp</div><div class="v" style="font-size:14px">${esc(run.contact || attr.whatsapp || attr.contact || '—')}</div></div>
       <div class="card"><div class="k">Duração</div><div class="v">${fmtMs(run.duration_ms)}</div></div>
       <div class="card"><div class="k">Início</div><div class="v" style="font-size:13px">${fmtTs(run.started_at)}</div></div>
       <div class="card"><div class="k">Tipo</div><div class="v" style="font-size:14px">${esc(run.kind)}</div></div>

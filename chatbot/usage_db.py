@@ -434,6 +434,41 @@ def append_log(
         pass
 
 
+def merge_attribution(run_id: str, extra: Optional[dict[str, Any]]) -> None:
+    """Acrescenta campos na atribuicao ja salva do uso (ex.: funil /47, WhatsApp)."""
+    if not run_id or not extra:
+        return
+    init_db()
+    clean = {k: v for k, v in extra.items() if v not in (None, "")}
+    if not clean:
+        return
+    with _lock:
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT attribution_json FROM runs WHERE id = ?", (run_id,)
+            ).fetchone()
+            if not row:
+                return
+            current: dict[str, Any] = {}
+            raw = row["attribution_json"]
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        current = parsed
+                except Exception:
+                    current = {}
+            current.update(clean)
+            conn.execute(
+                "UPDATE runs SET attribution_json = ? WHERE id = ?",
+                (json.dumps(current, ensure_ascii=False), run_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
 def add_artifact(
     run_id: str,
     *,

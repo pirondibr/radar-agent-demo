@@ -108,6 +108,8 @@ def create_pro_checkout(
     slug: str = "",
     job_id: str = "",
     product: str = "deep_channel",
+    unit_price: Optional[float] = None,
+    funnel: str = "",
 ) -> dict[str, Any]:
     """Cria preference Checkout Pro com PIX + cartão.
 
@@ -128,7 +130,7 @@ def create_pro_checkout(
     if product == "extras_pack":
         channel_label = "canais-extra"
         title = EXTRAS_TITLE
-        price = EXTRAS_PRICE
+        price = float(unit_price) if unit_price is not None else EXTRAS_PRICE
         description = (
             f"Canais extra para {company or slug or 'cliente'}: "
             "Meta Ads, LinkedIn, Instagram e YouTube"
@@ -178,6 +180,7 @@ def create_pro_checkout(
             "slug": slug,
             "job_id": job_id,
             "product": f"radar_{product}",
+            "funnel": funnel or "",
         },
     }
 

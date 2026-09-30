@@ -253,7 +253,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.41';
+const APP_VERSION = '1.5.42';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -273,6 +273,11 @@ function captureAttribution() {
   });
   if (!next.landing) next.landing = location.href.split('#')[0];
   if (!next.referrer && document.referrer) next.referrer = document.referrer;
+  if (/^\/47\/?$/.test(location.pathname)) {
+    next.funnel = 'radar_47';
+    next.landing = location.href.split('#')[0];
+    touched = true;
+  }
   // last-click: se veio gclid/fbclid agora, sobrescreve
   if (touched || !sessionStorage.getItem(KEY)) {
     try { sessionStorage.setItem(KEY, JSON.stringify(next)); } catch (e) {}
@@ -280,11 +285,17 @@ function captureAttribution() {
   return next;
 }
 function getAttribution() {
+  let attr = {};
   try {
     const raw = sessionStorage.getItem('radar_attr');
-    if (raw) return JSON.parse(raw) || {};
-  } catch (e) {}
-  return captureAttribution();
+    if (raw) attr = JSON.parse(raw) || {};
+  } catch (e) { attr = {}; }
+  if (!attr || !Object.keys(attr).length) attr = captureAttribution();
+  if (/^\/47\/?$/.test(location.pathname)) {
+    attr.funnel = 'radar_47';
+    attr.landing = location.href.split('#')[0];
+  }
+  return attr;
 }
 captureAttribution();
 
@@ -323,6 +334,7 @@ function trackGtagPurchase(data) {
 }
 const BOT_NAME = 'Radar da Concorrência';
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
+const OFFER_47 = /^\/47\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -331,10 +343,14 @@ const topStatus = document.getElementById('topStatus');
 const topMeta = document.getElementById('topMeta');
 const appVersionEl = document.getElementById('appVersion');
 if (appVersionEl) appVersionEl.textContent = 'v' + APP_VERSION;
-document.title = (VIDEO_MODE ? 'Demo vídeo · ' : '') + BOT_NAME + ' v' + APP_VERSION + ' | Consultor de Marketing';
+document.title = (VIDEO_MODE ? 'Demo vídeo · ' : (OFFER_47 ? 'Radar R$ 47 · ' : '')) + BOT_NAME + ' v' + APP_VERSION + ' | Consultor de Marketing';
 if (VIDEO_MODE) {
  document.body.classList.add('video-mode');
  if (topMeta) topMeta.textContent = 'Demo vídeo · Chatguru';
+}
+if (OFFER_47) {
+ document.body.classList.add('offer-47');
+ if (topMeta) topMeta.textContent = 'Canais · R$ 47';
 }
 
 function metaEventId() {
@@ -410,6 +426,72 @@ function trackMeta(eventName, params, user) {
    })
    .catch((e) => console.warn('[Meta CAPI] falha', e));
  } catch (e) {}
+}
+
+let offer47Phone = '';
+let offer47AwaitWhatsapp = false;
+let offer47PayAfterWhatsapp = false;
+
+function extractWhatsapp(text) {
+ const raw = String(text || '');
+ const re = /(?:\+?55\s*)?\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/g;
+ const matches = raw.match(re) || [];
+ for (const m of matches) {
+  const d = m.replace(/\D/g, '');
+  if (d.length >= 10 && d.length <= 13) return d;
+ }
+ return '';
+}
+
+function stripWhatsapp(text) {
+ return String(text || '')
+  .replace(/(?:\+?55\s*)?\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/g, ' ')
+  .replace(/[,;|]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+}
+
+async function captureOffer47Whatsapp(phone, opts) {
+ const digits = String(phone || '').replace(/\D/g, '');
+ if (digits.length < 10) return;
+ const openPay = !!(opts && opts.openPay);
+ const first = !window.__offer47LeadFired;
+ offer47Phone = digits;
+ offer47AwaitWhatsapp = false;
+ try {
+  await fetch('/api/leads', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({
+    offer: 'radar_47',
+    channel: 'analise',
+    contact: digits,
+    contact_type: 'whatsapp',
+    capture_only: true,
+    company: analysisCtx.company || '',
+    slug: analysisCtx.slug || '',
+    job_id: analysisCtx.job_id || '',
+    attribution: getAttribution(),
+   }),
+  });
+ } catch (e) {}
+ if (first && (analysisCtx.slug || analysisCtx.company)) {
+  window.__offer47LeadFired = true;
+  trackMeta('Lead', {
+   content_name: 'Análise inicial',
+   content_category: 'radar_47',
+   content_ids: [analysisCtx.slug || analysisCtx.company || 'site'],
+  }, { phone: digits });
+ }
+ if (!openPay) {
+  addBotBubble('WhatsApp registrado. Sigo com a análise do site.');
+ }
+ if (openPay || offer47PayAfterWhatsapp) {
+  offer47PayAfterWhatsapp = false;
+  const root = document.querySelector('[data-section="extras-47"]');
+  const btn = root && root.querySelector('[data-extras-cta]');
+  if (root && btn && !busy) startExtrasCheckout(root, btn);
+ }
 }
 
 function trackCheckoutOpen(data) {
@@ -1050,7 +1132,7 @@ async function submitPendingContact(rawContact) {
 }
 
 function renderProTeaser(opts) {
- if (VIDEO_MODE) return; // demo video: sem blocos / paywall Pro
+ if (VIDEO_MODE || OFFER_47) return; // demo video e /47: sem paywall Pro
  const {
  channel = 'ads',
  questions = PRO_QUESTIONS_ADS,
@@ -1101,7 +1183,7 @@ function renderProTeaser(opts) {
 
 function analysisBlocks(channel, analysisTitle, insight, proHook) {
  const coClass = channel === 'seo' ? 'ci' : (channel === 'brand' ? 'cs' : 'cw');
- const hook = (!VIDEO_MODE && proHook)
+ const hook = (!VIDEO_MODE && !OFFER_47 && proHook)
   ? `<div class="co ci co-hook"><div class="co-title">Versão Pro</div><div class="co-body">${esc(proHook)}</div></div>`
   : '';
  return `
@@ -1111,8 +1193,42 @@ function analysisBlocks(channel, analysisTitle, insight, proHook) {
  `;
 }
 
+function renderExtras47() {
+ if (document.querySelector('[data-section="extras-47"]')) return;
+ const price = 47;
+ const node = append(`
+ <div class="q-block reveal" data-section="extras-47">
+ <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="q-bubble">Os rankings de Ads, SEO e Marca estão acima. Quer abrir também <strong>Meta, Instagram, YouTube e TikTok</strong>?</div>
+ <div class="answer-card ac-finale">
+ <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Canais extra</div></div>
+ <div class="hero-num">
+ <div class="finale-price">R$ ${price}</div>
+ <div class="hero-sub">Meta · Instagram · YouTube · TikTok</div>
+ </div>
+ <div class="ac-text">
+ Pague <strong>R$ ${price}</strong> com PIX ou cartão no Mercado Pago e eu libero os rankings desses canais aqui no chat.
+ </div>
+ <div class="channel-chips">
+ <span class="channel-chip meta">Meta Ads</span>
+ <span class="channel-chip ig">Instagram</span>
+ <span class="channel-chip yt">YouTube</span>
+ <span class="channel-chip tt">TikTok</span>
+ </div>
+ <div class="finale-cta">
+ <div class="pro-cta-text" style="max-width:380px">Pagamento único dos canais extra.</div>
+ <button type="button" class="finale-btn" data-extras-cta>Pagar R$ ${price} e ver canais extra</button>
+ </div>
+ <div class="hint" data-extras-hint></div>
+ </div>
+ </div>`);
+ const btn = node.querySelector('[data-extras-cta]');
+ btn.addEventListener('click', () => startExtrasCheckout(node, btn));
+}
+
 function renderProFinale() {
  if (VIDEO_MODE) return; // demo video: canais extra ja liberados, sem checkout
+ if (OFFER_47) return renderExtras47();
  const price = (window.__extrasPrice || window.__proPrice || 99);
  const node = append(`
  <div class="q-block reveal">
@@ -1148,6 +1264,16 @@ function renderProFinale() {
 }
 
 async function startExtrasCheckout(root, btn) {
+ if (OFFER_47 && !offer47Phone) {
+  offer47AwaitWhatsapp = true;
+  offer47PayAfterWhatsapp = true;
+  if (btn) btn.disabled = false;
+  const hint0 = root && root.querySelector('[data-extras-hint]');
+  if (hint0) hint0.textContent = 'Envie o WhatsApp aqui no chat para eu abrir o Mercado Pago.';
+  addBotBubble('Antes do Mercado Pago, me envie seu **WhatsApp** com DDD. Ex: `11999999999`.');
+  try { input.focus(); } catch (e) {}
+  return;
+ }
  if (busy) return;
  if (btn.dataset.mode === 'verify') {
   return; // handled by verify handler
@@ -1197,6 +1323,8 @@ async function startExtrasCheckout(root, btn) {
     company: analysisCtx.company || '',
     slug: analysisCtx.slug || '',
     job_id: analysisCtx.job_id || '',
+    funnel: OFFER_47 ? 'radar_47' : '',
+    attribution: getAttribution(),
    }),
   });
   const data = await res.json();
@@ -1595,6 +1723,22 @@ async function boot() {
   setTimeout(() => startVideoDemo(), 900);
   return;
  }
+ if (OFFER_47) {
+  window.__proPrice = data.pro_price || 99;
+  window.__extrasPrice = 47;
+  addBotBubble(
+   'Olá! Eu sou o **Radar da Concorrência**. Envie o site da empresa e eu mostro os dados dos canais — onde você e os concorrentes estão ganhando ou perdendo.',
+   true
+  );
+  setTimeout(() => {
+   const askNode = addBotBubble('Envie o **site** e o **WhatsApp** com DDD. Ex: `seusite.com.br, 11999999999`.', true);
+   const hint = document.createElement('div');
+   hint.className = 'hint';
+   hint.innerHTML = 'O site libera a análise. O WhatsApp registra o contato.';
+   askNode.appendChild(hint);
+  }, 450);
+  return;
+ }
  addBotBubble(data.greeting, true);
  window.__proPrice = data.pro_price || 99;
  window.__extrasPrice = data.extras_price || data.pro_price || 99;
@@ -1890,6 +2034,8 @@ function listenJobEvents(jobId, isExtras) {
    if (msg.extras || isExtras) {
     if (VIDEO_MODE) {
      addBotBubble('Demonstração concluída: Ads, SEO, Marca e canais extra (Meta, Instagram, YouTube e TikTok) com o exemplo **Chatguru**.');
+    } else if (OFFER_47) {
+     addBotBubble('Canais extra concluídos: Meta, Instagram, YouTube e TikTok.');
     } else {
      addBotBubble('Canais extra concluídos. Cada bloco acima tem oferta Pro de análise profunda (entrega manual em até 24h).');
     }
@@ -1923,12 +2069,25 @@ async function sendMessage() {
  const text = input.value.trim();
  if (!text) return;
  // Contato pos-clique Pro deve funcionar mesmo com pipeline "busy"
- if (busy && !contactPending) return;
+ if (busy && !contactPending) {
+  if (OFFER_47 && offer47PayAfterWhatsapp && extractWhatsapp(text)) {
+   input.value = '';
+   addUserBubble(text);
+   await captureOffer47Whatsapp(extractWhatsapp(text), { openPay: true });
+   return;
+  }
+  return;
+ }
  input.value = '';
  addUserBubble(text);
 
  if (contactPending) {
   await submitPendingContact(text);
+  return;
+ }
+
+ if (OFFER_47 && offer47PayAfterWhatsapp && extractWhatsapp(text) && !stripWhatsapp(text)) {
+  await captureOffer47Whatsapp(extractWhatsapp(text), { openPay: true });
   return;
  }
 
@@ -1976,10 +2135,13 @@ async function sendMessage() {
  const wa = parsedSite.whatsapp || freeGate.whatsapp || '';
  trackMeta('Lead', {
   content_name: 'Análise inicial',
-  content_category: 'radar_analysis',
+  content_category: OFFER_47 ? 'radar_47' : 'radar_analysis',
   content_ids: [parsedSite.slug || parsedSite.company || 'site'],
  }, wa ? { phone: wa } : undefined);
- // limpa gate para proxima analise
+ if (OFFER_47 && wa) {
+  offer47Phone = String(wa).replace(/\D/g, '');
+  window.__offer47LeadFired = true;
+ }
  freeGate = { siteText: '', whatsapp: '' };
  jobId = data.job_id;
  stepDefs = data.steps || stepDefs;
@@ -1991,7 +2153,7 @@ async function sendMessage() {
   demo: !!p.demo,
   whatsapp: wa,
  };
- topMeta.textContent = `${p.company || p.slug || 'cliente'}`;
+ topMeta.textContent = `${p.company || p.slug || 'cliente'}${OFFER_47 ? ' · /47' : ''}`;
  addBotBubble(data.ack);
  const first = stepDefs[0] || {};
  const etaSec = p.demo ? (first.eta_demo || 10) : (first.eta_live || 120);
