@@ -241,7 +241,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <div class="composer">
  <div class="composer-inner">
- <input id="msgInput" type="text" placeholder="Cole o endereço do seu site (ex: https://suaempresa.com.br)" autocomplete="off" />
+ <input id="msgInput" type="text" placeholder="Ex: seusite.com.br, 11999999999" autocomplete="off" />
  <button id="sendBtn" type="button">Enviar</button>
  </div>
 </div>
@@ -253,7 +253,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.40';
+const APP_VERSION = '1.5.41';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -431,10 +431,78 @@ function trackCheckoutOpen(data) {
 
 let busy = false;
 let awaitingExtraJobId = null;
+/** Gate da analise gratuita: guarda site ou WhatsApp se vierem em mensagens separadas */
+let freeGate = { siteText: '', whatsapp: '' };
 let stepDefs = [];
 let analysisCtx = { company: '', slug: '', job_id: '', demo: false };
 /** Apos pagamento Pro: aguarda e-mail/WhatsApp no input principal do chat */
 let contactPending = null;
+
+function contactsInText(raw) {
+ const text = String(raw || '');
+ const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+ const email = emailMatch ? emailMatch[0] : '';
+ let phone = '';
+ const chunks = text.match(/(?:\+?\d[\d\s().-]{8,}\d)/g) || [];
+ for (let i = 0; i < chunks.length; i++) {
+  const digits = chunks[i].replace(/\D/g, '');
+  if (digits.length >= 10 && digits.length <= 13) {
+   phone = digits;
+   break;
+  }
+ }
+ return { email, phone };
+}
+
+function looksLikeSite(text) {
+ const t = String(text || '').trim();
+ if (!t) return false;
+ if (/https?:\/\//i.test(t)) return true;
+ return /(?:^|[\s,;])(?:www\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/i.test(' ' + t);
+}
+
+function stripPhoneFromText(text, phoneDigits) {
+ let t = String(text || '');
+ if (!phoneDigits) return t.trim();
+ const chunks = t.match(/(?:\+?\d[\d\s().-]{8,}\d)/g) || [];
+ chunks.forEach((chunk) => {
+  const d = chunk.replace(/\D/g, '');
+  if (d === phoneDigits || d.endsWith(phoneDigits.slice(-11)) || phoneDigits.endsWith(d)) {
+   t = t.replace(chunk, ' ');
+  }
+ });
+ return t.replace(/[\s,;|/]+/g, ' ').trim().replace(/^[,;.\-|]+|[,;.\-|]+$/g, '');
+}
+
+/** Retorna { ready, siteText, whatsapp, prompt } para liberar analise gratuita */
+function resolveFreeGate(text) {
+ const found = contactsInText(text);
+ const phone = found.phone || '';
+ const hasSite = looksLikeSite(text);
+ if (phone) freeGate.whatsapp = phone;
+ if (hasSite) {
+  freeGate.siteText = stripPhoneFromText(text, phone) || freeGate.siteText;
+ }
+ if (freeGate.siteText && freeGate.whatsapp) {
+  return { ready: true, siteText: freeGate.siteText, whatsapp: freeGate.whatsapp };
+ }
+ if (freeGate.siteText && !freeGate.whatsapp) {
+  return {
+   ready: false,
+   prompt: 'Site anotado. Agora me envie seu **WhatsApp com DDD** (ex: `11999999999`) para liberar a análise gratuita.',
+  };
+ }
+ if (!freeGate.siteText && freeGate.whatsapp) {
+  return {
+   ready: false,
+   prompt: 'WhatsApp anotado. Agora me envie o **endereço do seu site** (ex: `seusite.com.br`).',
+  };
+ }
+ return {
+  ready: false,
+  prompt: 'Para começar, envie o **site** e o **WhatsApp com DDD** — pode ser na mesma mensagem.\nEx: `seusite.com.br, 11999999999`',
+ };
+}
 
 function esc(s) {
  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -1534,7 +1602,7 @@ async function boot() {
  const askNode = addBotBubble(data.ask, true);
  const hint = document.createElement('div');
  hint.className = 'hint';
- hint.innerHTML = 'Exemplo: <code>seusite.com.br</code>';
+ hint.innerHTML = 'Exemplo: <code>seusite.com.br, 11999999999</code>';
  askNode.appendChild(hint);
  }, 450);
  } catch (e) {
@@ -1864,27 +1932,55 @@ async function sendMessage() {
   return;
  }
 
+ // Gate: site + WhatsApp obrigatorios na analise gratuita (exceto video demo)
+ if (!VIDEO_MODE) {
+  const gate = resolveFreeGate(text);
+  if (!gate.ready) {
+   addBotBubble(gate.prompt);
+   return;
+  }
+ }
+
  setBusy(true);
 
  let jobId;
  try {
+ const payload = {
+  message: (freeGate.siteText || text),
+  whatsapp: freeGate.whatsapp || '',
+  attribution: getAttribution(),
+ };
  const res = await fetch('/api/chat', {
  method: 'POST',
  headers: { 'Content-Type': 'application/json' },
- body: JSON.stringify({ message: text, attribution: getAttribution() }),
+ body: JSON.stringify(payload),
  });
  const data = await res.json();
  if (!res.ok) {
+  if (data.need === 'whatsapp') {
+   freeGate.siteText = freeGate.siteText || ((data.parsed || {}).url || text);
+   addBotBubble(data.error || 'Envie seu WhatsApp com DDD para continuar.');
+   setBusy(false);
+   return;
+  }
+  if (data.need === 'site') {
+   addBotBubble(data.error || 'Envie o endereço do site para continuar.');
+   setBusy(false);
+   return;
+  }
  append(`<div class="q-block reveal"><div class="err-card">${esc(data.error || 'Erro')}</div></div>`);
  setBusy(false);
  return;
  }
  const parsedSite = (data.parsed || {});
+ const wa = parsedSite.whatsapp || freeGate.whatsapp || '';
  trackMeta('Lead', {
   content_name: 'Análise inicial',
   content_category: 'radar_analysis',
   content_ids: [parsedSite.slug || parsedSite.company || 'site'],
- });
+ }, wa ? { phone: wa } : undefined);
+ // limpa gate para proxima analise
+ freeGate = { siteText: '', whatsapp: '' };
  jobId = data.job_id;
  stepDefs = data.steps || stepDefs;
  const p = data.parsed || {};
@@ -1893,6 +1989,7 @@ async function sendMessage() {
   slug: p.slug || '',
   job_id: jobId,
   demo: !!p.demo,
+  whatsapp: wa,
  };
  topMeta.textContent = `${p.company || p.slug || 'cliente'}`;
  addBotBubble(data.ack);

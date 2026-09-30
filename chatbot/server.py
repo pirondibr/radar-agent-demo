@@ -21,7 +21,7 @@ from typing import Any, Optional
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-from parse_input import ParsedInput, parse_user_message
+from parse_input import ParsedInput, extract_whatsapp, parse_user_message, strip_whatsapp
 from pipeline import (
     EXTRA_STEP_DEFS,
     STEP_DEFS,
@@ -70,7 +70,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.40"
+APP_VERSION = "1.5.41"
 
 try:
     usage_db.init_db()
@@ -298,18 +298,22 @@ def hello():
         "seus concorrentes, e te mostrar onde você está ganhando ou perdendo "
         "espaço e dinheiro no seu nicho."
     )
-    ask = "Para iniciarmos, envie o endereço do seu site logo abaixo."
+    ask = (
+        "Para iniciarmos a análise gratuita, envie o **endereço do seu site** e o seu "
+        "**WhatsApp com DDD** (pode ser na mesma mensagem)."
+    )
     if DEMO_ONLY:
-        examples = ["seusite.com.br"]
+        examples = ["seusite.com.br, 11999999999"]
     elif live_ok:
-        examples = ["seusite.com.br"]
+        examples = ["seusite.com.br, 11999999999"]
     else:
         missing = ", ".join(_missing_live_keys())
         ask = (
-            "Para iniciarmos, envie o endereço do seu site logo abaixo. "
+            "Para iniciarmos a análise gratuita, envie o **endereço do seu site** e o seu "
+            "**WhatsApp com DDD**. "
             f"(Servidor ainda sem todas as API keys: {missing}.)"
         )
-        examples = ["seusite.com.br"]
+        examples = ["seusite.com.br, 11999999999"]
     return jsonify({
         "greeting": greeting,
         "ask": ask,
@@ -365,11 +369,41 @@ def chat():
     if not message:
         return jsonify({"error": "Mensagem vazia"}), 400
 
-    parsed = parse_user_message(message)
+    whatsapp = (
+        extract_whatsapp(str(data.get("whatsapp") or data.get("contact") or ""))
+        or extract_whatsapp(message)
+    )
+    site_message = strip_whatsapp(message) if whatsapp else message
+    # Se o body ja trouxe so o site limpo
+    if (data.get("site_message") or "").strip():
+        site_message = str(data.get("site_message")).strip()
+
+    parsed = parse_user_message(site_message or message)
     if not parsed.company and not parsed.slug and not parsed.demo:
         return jsonify({
-            "error": "Nao consegui identificar a empresa. Envie uma URL ou o nome (ex: https://chatguru.com.br/).",
+            "error": (
+                "Não identifiquei o site. Envie o endereço e o WhatsApp com DDD — "
+                "ex: `seusite.com.br, 11999999999`."
+            ),
+            "need": "site",
             "parsed": None,
+        }), 400
+
+    # Analise gratuita exige WhatsApp (exceto demo/video)
+    if not parsed.demo and not whatsapp:
+        return jsonify({
+            "error": (
+                "Para liberar a análise gratuita, preciso do seu **WhatsApp com DDD**. "
+                "Pode enviar junto com o site, ex: `seusite.com.br, 11999999999`."
+            ),
+            "need": "whatsapp",
+            "parsed": {
+                "company": parsed.company,
+                "url": parsed.url,
+                "slug": parsed.slug,
+                "competitors": parsed.competitors,
+                "demo": False,
+            },
         }), 400
 
     if DEMO_ONLY:
@@ -426,13 +460,45 @@ def chat():
             ip=(request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:80],
             traffic_source=traffic_source,
             attribution=attribution,
+            contact=whatsapp,
+            contact_type="whatsapp" if whatsapp else "",
         )
         usage_db.append_log(
             job_id,
-            f"Uso iniciado: {parsed.company or parsed.slug} ({parsed.url or 'sem url'}) · origem={traffic_source}",
+            f"Uso iniciado: {parsed.company or parsed.slug} ({parsed.url or 'sem url'}) "
+            f"· origem={traffic_source}"
+            + (f" · whatsapp={whatsapp}" if whatsapp else ""),
         )
     except Exception as e:
         print(f"[usage_db] create_run falhou: {e}")
+
+    # Registra lead gratuito com WhatsApp no dashboard
+    if whatsapp and not parsed.demo:
+        try:
+            lead = {
+                "id": uuid.uuid4().hex[:12],
+                "ts": time.time(),
+                "offer": "free_analysis",
+                "channel": "analise-gratuita",
+                "name": "",
+                "contact_type": "whatsapp",
+                "contact": whatsapp,
+                "company": parsed.company or "",
+                "slug": parsed.slug or "",
+                "job_id": job_id,
+                "order_id": "",
+                "status": "free_lead",
+                "paid": False,
+                "pre_payment": False,
+                "traffic_source": traffic_source,
+                "attribution": attribution or {},
+            }
+            LEADS_DIR.mkdir(parents=True, exist_ok=True)
+            with LEADS_FILE.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(lead, ensure_ascii=False) + "\n")
+            usage_db.save_lead(lead)
+        except Exception as e:
+            print(f"[LEAD] free_analysis save failed: {e}")
 
     threading.Thread(target=_worker, args=(job,), daemon=True).start()
 
@@ -444,6 +510,7 @@ def chat():
             "slug": parsed.slug,
             "competitors": parsed.competitors,
             "demo": parsed.demo,
+            "whatsapp": whatsapp,
         },
         "steps": STEP_DEFS,
         "ack": _ack_message(parsed),
@@ -651,8 +718,14 @@ def create_lead():
 
     paid = False
     status = "awaiting_payment" if pre_payment else "pending_manual"
+    offer = (data.get("offer") or "deep_channel").strip()
+    free_lead = bool(data.get("free")) or offer in ("free_analysis", "free", "analise-gratuita")
 
-    if pre_payment:
+    if free_lead:
+        paid = False
+        status = "free_lead"
+        offer = "free_analysis"
+    elif pre_payment:
         paid = False
         status = "awaiting_payment"
     elif mp_configured():
@@ -679,8 +752,8 @@ def create_lead():
     lead = {
         "id": lead_id,
         "ts": time.time(),
-        "offer": data.get("offer") or "deep_channel",
-        "channel": channel,
+        "offer": offer,
+        "channel": channel or ("analise-gratuita" if free_lead else ""),
         "name": name,
         "contact_type": contact_type,
         "contact": contact,
@@ -688,10 +761,11 @@ def create_lead():
         "slug": (data.get("slug") or "").strip(),
         "job_id": (data.get("job_id") or "").strip(),
         "order_id": order_id,
-        "simulated_payment": not paid and not pre_payment,
+        "simulated_payment": not paid and not pre_payment and not free_lead,
         "status": status,
         "paid": paid,
         "pre_payment": pre_payment,
+        "free": free_lead,
     }
     traffic_source, attribution = _attribution_from_payload(data)
     lead["traffic_source"] = traffic_source
@@ -714,6 +788,8 @@ def create_lead():
             f"Dados salvos ({name or 'lead'} / {label}). "
             "Segue o link do Mercado Pago para concluir o pagamento."
         )
+    elif free_lead:
+        msg = f"WhatsApp **{contact}** registrado. Vamos seguir com a análise gratuita."
     else:
         msg = (
             f"Perfeito. Registrei seu {label} (**{contact}**) para a análise Pro de "
@@ -1242,6 +1318,14 @@ def admin_list_runs():
     limit = min(int(request.args.get("limit") or 50), 200)
     offset = max(int(request.args.get("offset") or 0), 0)
     return jsonify({"runs": usage_db.list_runs(limit=limit, offset=offset)})
+
+
+@app.get("/api/admin/leads")
+def admin_list_leads():
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    limit = min(int(request.args.get("limit") or 80), 200)
+    return jsonify({"leads": usage_db.list_leads(limit=limit)})
 
 
 @app.get("/api/admin/runs/<run_id>")

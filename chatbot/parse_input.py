@@ -37,6 +37,32 @@ def normalize_url(raw: str) -> str:
     return text.rstrip("/") + "/"
 
 
+def extract_whatsapp(text: str) -> str:
+    """Extrai celular BR (10–13 digitos) da mensagem; retorna so digitos."""
+    raw = text or ""
+    for m in re.finditer(r"(?:\+?\d[\d\s().-]{8,}\d)", raw):
+        digits = re.sub(r"\D", "", m.group(0))
+        if 10 <= len(digits) <= 13:
+            return digits
+    return ""
+
+
+def strip_whatsapp(text: str) -> str:
+    """Remove o telefone da mensagem para nao poluir o parse da URL."""
+    raw = text or ""
+    phone = extract_whatsapp(raw)
+    if not phone:
+        return raw.strip()
+
+    def _repl(m: re.Match) -> str:
+        digits = re.sub(r"\D", "", m.group(0))
+        return " " if digits == phone or digits.endswith(phone[-11:]) else m.group(0)
+
+    cleaned = re.sub(r"(?:\+?\d[\d\s().-]{8,}\d)", _repl, raw)
+    cleaned = re.sub(r"[\s,;|/]+", " ", cleaned).strip(" ,.;|-")
+    return cleaned
+
+
 def _extract_urls(text: str) -> list[str]:
     return re.findall(r"https?://[^\s,;]+|(?:www\.)?[a-z0-9][-a-z0-9.]*\.[a-z]{2,}(?:/[^\s,;]*)?", text, re.I)
 
@@ -100,8 +126,11 @@ def _split_competitors(chunk: str) -> list[str]:
 
 
 def parse_user_message(message: str) -> ParsedInput:
-    raw = (message or "").strip()
-    result = ParsedInput(raw=raw)
+    raw_in = (message or "").strip()
+    # Telefone na mesma mensagem nao deve virar "empresa"
+    phone = extract_whatsapp(raw_in)
+    raw = strip_whatsapp(raw_in) if phone else raw_in
+    result = ParsedInput(raw=raw_in)
 
     low = raw.lower().strip()
     if low in {"demo", "demo chatguru", "chatguru demo"} or low.startswith("demo "):

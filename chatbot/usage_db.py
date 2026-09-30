@@ -129,6 +129,8 @@ def init_db() -> None:
             for ddl in (
                 "ALTER TABLE runs ADD COLUMN traffic_source TEXT",
                 "ALTER TABLE runs ADD COLUMN attribution_json TEXT",
+                "ALTER TABLE runs ADD COLUMN contact TEXT",
+                "ALTER TABLE runs ADD COLUMN contact_type TEXT",
                 "ALTER TABLE leads ADD COLUMN traffic_source TEXT",
             ):
                 try:
@@ -155,6 +157,8 @@ def create_run(
     ip: str = "",
     traffic_source: str = "",
     attribution: Optional[dict[str, Any]] = None,
+    contact: str = "",
+    contact_type: str = "",
 ) -> None:
     init_db()
     now = time.time()
@@ -167,8 +171,9 @@ def create_run(
                 INSERT OR REPLACE INTO runs (
                   id, kind, status, company, slug, url, demo,
                   preferred_competitors_json, parent_run_id,
-                  started_at, user_agent, ip, traffic_source, attribution_json
-                ) VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  started_at, user_agent, ip, traffic_source, attribution_json,
+                  contact, contact_type
+                ) VALUES (?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -184,6 +189,8 @@ def create_run(
                     ip or "",
                     (traffic_source or "")[:80] or None,
                     attr_json,
+                    (contact or "")[:80] or None,
+                    (contact_type or "")[:20] or None,
                 ),
             )
             conn.commit()

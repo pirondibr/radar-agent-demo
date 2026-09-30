@@ -59,6 +59,7 @@ th{color:var(--muted);font-weight:600}
 <header>
   <h1>Radar Admin — Usos & Logs</h1>
   <button type="button" id="btnRefresh">Atualizar</button>
+  <button type="button" id="btnLeads">Leads / WhatsApp</button>
   <div class="meta" id="hdrMeta">carregando…</div>
 </header>
 <div class="layout">
@@ -121,6 +122,7 @@ async function loadRuns() {
         <span>${esc(r.kind || 'free')}</span>
         <span>${esc(r.mode || '—')}</span>
         ${sourceBadge(r.traffic_source)}
+        ${r.contact ? `<span title="WhatsApp">WA ${esc(r.contact)}</span>` : ''}
         <span>${fmtTs(r.started_at)}</span>
         <span>${fmtMs(r.duration_ms)}</span>
       </div>
@@ -176,6 +178,7 @@ async function openRun(id) {
     </div>
     <div class="grid">
       <div class="card"><div class="k">Origem</div><div class="v" style="font-size:14px">${esc(run.traffic_source || '—')}</div></div>
+      <div class="card"><div class="k">WhatsApp</div><div class="v" style="font-size:14px">${esc(run.contact || '—')}</div></div>
       <div class="card"><div class="k">Duração</div><div class="v">${fmtMs(run.duration_ms)}</div></div>
       <div class="card"><div class="k">Início</div><div class="v" style="font-size:13px">${fmtTs(run.started_at)}</div></div>
       <div class="card"><div class="k">Tipo</div><div class="v" style="font-size:14px">${esc(run.kind)}</div></div>
@@ -300,8 +303,54 @@ async function clearCache(run) {
 }
 
 document.getElementById('btnRefresh').addEventListener('click', loadRuns);
+document.getElementById('btnLeads').addEventListener('click', loadLeads);
 loadRuns();
 setInterval(loadRuns, 15000);
+
+async function loadLeads() {
+  selectedId = null;
+  const detail = document.getElementById('detail');
+  detail.innerHTML = '<div class="empty">Carregando leads…</div>';
+  const res = await api('/api/admin/leads?limit=100');
+  if (!res.ok) {
+    detail.innerHTML = `<div class="empty">Erro ${res.status} ao carregar leads</div>`;
+    return;
+  }
+  const data = await res.json();
+  const leads = data.leads || [];
+  document.getElementById('hdrMeta').textContent = leads.length + ' leads';
+  detail.innerHTML = `
+    <h2>Leads / WhatsApp</h2>
+    <div class="sub">Contatos capturados na análise gratuita e no Pro</div>
+    <section>
+      <table>
+        <thead>
+          <tr>
+            <th>Quando</th>
+            <th>Oferta</th>
+            <th>Empresa</th>
+            <th>Contato</th>
+            <th>Origem</th>
+            <th>Status</th>
+            <th>Job</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${leads.map(l => `
+            <tr>
+              <td>${fmtTs(l.ts)}</td>
+              <td>${esc(l.offer || '—')}</td>
+              <td>${esc(l.company || l.slug || '—')}</td>
+              <td>${esc((l.contact_type || '') + (l.contact ? ': ' + l.contact : '') || '—')}</td>
+              <td>${sourceBadge(l.traffic_source)}</td>
+              <td>${esc(l.status || '—')}${l.paid ? ' · pago' : ''}</td>
+              <td class="mono" style="font-family:var(--mono);font-size:11px">${esc(l.job_id || '—')}</td>
+            </tr>`).join('') || '<tr><td colspan="7">Nenhum lead ainda</td></tr>'}
+        </tbody>
+      </table>
+    </section>
+  `;
+}
 </script>
 </body>
 </html>
