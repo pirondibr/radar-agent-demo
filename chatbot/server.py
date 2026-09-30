@@ -70,7 +70,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.42"
+APP_VERSION = "1.5.43"
 
 try:
     usage_db.init_db()
@@ -1208,14 +1208,32 @@ def admin_dashboard():
     return resp
 
 
-@app.get("/api/admin/runs/<run_id>/export.html")
-def admin_export_html(run_id: str):
+def _valid_public_run_id(run_id: str) -> bool:
+    text = (run_id or "").strip()
+    if not (8 <= len(text) <= 32):
+        return False
+    return all(ch in "0123456789abcdefABCDEF" for ch in text)
+
+
+def _is_radar_47_run(run: dict) -> bool:
+    raw = run.get("attribution_json") or ""
+    try:
+        attr = json.loads(raw) if raw else {}
+    except Exception:
+        attr = {}
+    if not isinstance(attr, dict):
+        return False
+    if str(attr.get("funnel") or "") == "radar_47":
+        return True
+    landing = str(attr.get("landing") or "")
+    return "/47" in landing
+
+
+def _export_run_response(run_id: str):
     """HTML imprimivel do relatorio da run (Salvar como PDF no navegador)."""
-    if not _admin_authorized():
-        return jsonify({"error": "unauthorized"}), 403
     run = usage_db.get_run(run_id)
     if not run:
-        return jsonify({"error": "Run nao encontrado"}), 404
+        return None
 
     def _run_chain(start_id: str) -> list[str]:
         """run atual + parents (enrich herda artefatos da free)."""
@@ -1361,6 +1379,30 @@ def admin_export_html(run_id: str):
     resp.headers["Content-Disposition"] = f'inline; filename="radar-{safe}-{run_id}.html"'
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["X-Radar-Export-Source"] = source or "unknown"
+    return resp
+
+
+@app.get("/api/admin/runs/<run_id>/export.html")
+def admin_export_html(run_id: str):
+    if not _admin_authorized():
+        return jsonify({"error": "unauthorized"}), 403
+    resp = _export_run_response(run_id)
+    if resp is None:
+        return jsonify({"error": "Run nao encontrado"}), 404
+    return resp
+
+
+@app.get("/47/a/<run_id>")
+def offer_47_analysis(run_id: str):
+    """Link permanente da analise gratuita gerada no funil /47."""
+    if not _valid_public_run_id(run_id):
+        return Response("Análise não encontrada.", status=404, mimetype="text/plain; charset=utf-8")
+    run = usage_db.get_run(run_id)
+    if not run or not _is_radar_47_run(run):
+        return Response("Análise não encontrada.", status=404, mimetype="text/plain; charset=utf-8")
+    resp = _export_run_response(run_id)
+    if resp is None:
+        return Response("Análise não encontrada.", status=404, mimetype="text/plain; charset=utf-8")
     return resp
 
 

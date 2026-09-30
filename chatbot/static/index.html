@@ -176,6 +176,15 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .composer input::placeholder{color:var(--text-3)}
 .composer button{border:0;border-radius:12px;padding:12px 18px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
 .composer button:disabled{opacity:.45;cursor:not-allowed}
+body.offer-47 .main{padding-bottom:150px}
+body.offer-47 .composer{padding-bottom:22px}
+body.offer-47 .composer-inner{border:2px solid var(--accent);padding:10px;border-radius:18px;box-shadow:0 12px 40px rgba(79,70,229,.22)}
+body.offer-47 .composer input{font-size:16px;padding:16px 16px;background:#f8fafc;border-radius:12px}
+body.offer-47 .composer button{padding:16px 18px;font-size:15px;font-weight:800;min-width:220px;line-height:1.2;text-align:center;box-shadow:0 6px 18px rgba(79,70,229,.35)}
+@media(max-width:640px){
+ body.offer-47 .main{padding-bottom:168px}
+ body.offer-47 .composer button{min-width:0;font-size:13px;padding:14px 12px}
+}
 .wa-fab{position:fixed;right:18px;bottom:88px;z-index:95;display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:999px;background:#25D366;color:#fff;font-weight:800;font-size:13px;text-decoration:none;font-family:inherit;box-shadow:0 8px 24px rgba(37,211,102,.35)}
 .wa-fab:hover{filter:brightness(1.05);color:#fff}
 .wa-fab svg{width:20px;height:20px;flex-shrink:0}
@@ -253,7 +262,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.42';
+const APP_VERSION = '1.5.43';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -351,6 +360,8 @@ if (VIDEO_MODE) {
 if (OFFER_47) {
  document.body.classList.add('offer-47');
  if (topMeta) topMeta.textContent = 'Canais · R$ 47';
+ if (sendBtn) sendBtn.textContent = 'Gerar análise gratuita';
+ if (input) input.placeholder = 'seusite.com.br, 11999999999';
 }
 
 function metaEventId() {
@@ -1226,9 +1237,59 @@ function renderExtras47() {
  btn.addEventListener('click', () => startExtrasCheckout(node, btn));
 }
 
+function analysisShareUrl(jobId) {
+ const id = String(jobId || analysisCtx.job_id || '').trim();
+ if (!id) return '';
+ return location.origin + '/47/a/' + encodeURIComponent(id);
+}
+
+function renderSavedAnalysisLink() {
+ if (!OFFER_47) return;
+ if (document.querySelector('[data-section="analysis-link"]')) return;
+ const url = analysisShareUrl(analysisCtx.job_id);
+ if (!url) return;
+ const node = append(`
+ <div class="q-block reveal" data-section="analysis-link" data-no-print>
+ <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="q-bubble">Sua análise gratuita ficou salva. Guarde este link para abrir de novo quando quiser.</div>
+ <div class="answer-card ac-finale">
+ <div class="ac-head"><div class="ac-agent ag-finale">L</div><div class="ac-label lb-finale">Link da análise</div></div>
+ <div class="ac-text" style="word-break:break-all"><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a></div>
+ <div class="pdf-export-actions">
+ <button type="button" class="finale-btn secondary" data-copy-analysis>Copiar link da análise</button>
+ <span class="hint" data-copy-hint style="margin:0"></span>
+ </div>
+ </div>
+ </div>`);
+ const btn = node.querySelector('[data-copy-analysis]');
+ const hint = node.querySelector('[data-copy-hint]');
+ if (!btn) return;
+ btn.addEventListener('click', async () => {
+  try {
+   if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(url);
+   } else {
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+   }
+   if (hint) hint.textContent = 'Link copiado.';
+   btn.textContent = 'Link copiado';
+  } catch (e) {
+   if (hint) hint.textContent = 'Não consegui copiar. Selecione o link acima.';
+  }
+ });
+}
+
 function renderProFinale() {
  if (VIDEO_MODE) return; // demo video: canais extra ja liberados, sem checkout
- if (OFFER_47) return renderExtras47();
+ if (OFFER_47) {
+  renderSavedAnalysisLink();
+  return renderExtras47();
+ }
  const price = (window.__extrasPrice || window.__proPrice || 99);
  const node = append(`
  <div class="q-block reveal">
@@ -1727,14 +1788,14 @@ async function boot() {
   window.__proPrice = data.pro_price || 99;
   window.__extrasPrice = 47;
   addBotBubble(
-   'Olá! Eu sou o **Radar da Concorrência**. Envie o site da empresa e eu mostro os dados dos canais — onde você e os concorrentes estão ganhando ou perdendo.',
+   'Olá! Gostaria de saber quais estratégias de marketing seus concorrentes estão utilizando para faturar mais? Posso te mostrar isso agora!',
    true
   );
   setTimeout(() => {
-   const askNode = addBotBubble('Envie o **site** e o **WhatsApp** com DDD. Ex: `seusite.com.br, 11999999999`.', true);
+   const askNode = addBotBubble('Insira seu **Site** e número de **WhatsApp** para receber uma análise de mercado gratuita:', true);
    const hint = document.createElement('div');
    hint.className = 'hint';
-   hint.innerHTML = 'O site libera a análise. O WhatsApp registra o contato.';
+   hint.innerHTML = 'Exemplo: <code>seusite.com.br, 11999999999</code>';
    askNode.appendChild(hint);
   }, 450);
   return;
