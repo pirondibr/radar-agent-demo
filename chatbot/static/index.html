@@ -176,15 +176,6 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .composer input::placeholder{color:var(--text-3)}
 .composer button{border:0;border-radius:12px;padding:12px 18px;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
 .composer button:disabled{opacity:.45;cursor:not-allowed}
-body.offer-47 .main{padding-bottom:150px}
-body.offer-47 .composer{padding-bottom:22px}
-body.offer-47 .composer-inner{border:2px solid var(--accent);padding:10px;border-radius:18px;box-shadow:0 12px 40px rgba(79,70,229,.22)}
-body.offer-47 .composer input{font-size:16px;padding:16px 16px;background:#f8fafc;border-radius:12px}
-body.offer-47 .composer button{padding:16px 18px;font-size:15px;font-weight:800;min-width:220px;line-height:1.2;text-align:center;box-shadow:0 6px 18px rgba(79,70,229,.35)}
-@media(max-width:640px){
- body.offer-47 .main{padding-bottom:168px}
- body.offer-47 .composer button{min-width:0;font-size:13px;padding:14px 12px}
-}
 .wa-fab{position:fixed;right:18px;bottom:88px;z-index:95;display:inline-flex;align-items:center;gap:8px;padding:12px 16px;border-radius:999px;background:#25D366;color:#fff;font-weight:800;font-size:13px;text-decoration:none;font-family:inherit;box-shadow:0 8px 24px rgba(37,211,102,.35)}
 .wa-fab:hover{filter:brightness(1.05);color:#fff}
 .wa-fab svg{width:20px;height:20px;flex-shrink:0}
@@ -262,7 +253,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.43';
+const APP_VERSION = '1.5.44';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -360,8 +351,6 @@ if (VIDEO_MODE) {
 if (OFFER_47) {
  document.body.classList.add('offer-47');
  if (topMeta) topMeta.textContent = 'Canais · R$ 47';
- if (sendBtn) sendBtn.textContent = 'Gerar análise gratuita';
- if (input) input.placeholder = 'seusite.com.br, 11999999999';
 }
 
 function metaEventId() {
