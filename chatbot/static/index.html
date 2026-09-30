@@ -253,7 +253,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.39';
+const APP_VERSION = '1.5.40';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -410,22 +410,6 @@ function trackMeta(eventName, params, user) {
    })
    .catch((e) => console.warn('[Meta CAPI] falha', e));
  } catch (e) {}
-}
-
-function contactsInText(raw) {
- const text = String(raw || '');
- const emailMatch = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
- const email = emailMatch ? emailMatch[0] : '';
- let phone = '';
- const chunks = text.match(/(?:\+?\d[\d\s().-]{8,}\d)/g) || [];
- for (let i = 0; i < chunks.length; i++) {
-  const digits = chunks[i].replace(/\D/g, '');
-  if (digits.length >= 10 && digits.length <= 13) {
-   phone = digits;
-   break;
-  }
- }
- return { email, phone };
 }
 
 function trackCheckoutOpen(data) {
@@ -985,16 +969,6 @@ async function submitPendingContact(rawContact) {
    leadId: data.lead_id || '',
   };
   contactPending = next;
-  const found = contactsInText(rawContact);
-  trackMeta('Lead', {
-   content_name: 'Radar Pro',
-   content_category: pending.channel || 'pro',
-   currency: 'BRL',
-   value: window.__proPrice || 99,
-  }, {
-   email: found.email || (String(contact).includes('@') ? contact : ''),
-   phone: found.phone || (String(contact).includes('@') ? '' : contact),
-  });
   addBotBubble(
    `Perfeito, **${name || 'registrado'}**! Salvei seu contato. Agora vou abrir o **Mercado Pago** para o pagamento da análise Pro.`
   );
@@ -1905,6 +1879,12 @@ async function sendMessage() {
  setBusy(false);
  return;
  }
+ const parsedSite = (data.parsed || {});
+ trackMeta('Lead', {
+  content_name: 'Análise inicial',
+  content_category: 'radar_analysis',
+  content_ids: [parsedSite.slug || parsedSite.company || 'site'],
+ });
  jobId = data.job_id;
  stepDefs = data.steps || stepDefs;
  const p = data.parsed || {};
