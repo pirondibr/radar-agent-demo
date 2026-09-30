@@ -208,6 +208,9 @@ body.video-mode .main{padding-bottom:24px}
 .pay-form > input{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px;box-sizing:border-box}
 .pay-form > button[data-contact-send]{border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;align-self:flex-start}
 @media(max-width:640px){
+html,body{height:100%;max-height:100dvh}
+body{height:100dvh;min-height:100dvh;overflow:hidden}
+.reveal{transform:none}
 .top{padding:10px 12px}
 .top-name{font-size:13px}
 .main{padding:14px 12px calc(132px + env(safe-area-inset-bottom))}
@@ -266,7 +269,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.47';
+const APP_VERSION = '1.5.48';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -771,12 +774,13 @@ function simBadgeInline(c) {
  return `<span class="badge">${esc(raw)}</span>`;
 }
 
-function addBotBubble(text, intro) {
+function addBotBubble(text, intro, scrollBlock) {
  const cls = intro ? 'q-bubble intro' : 'q-bubble';
+ const where = scrollBlock || (intro ? 'start' : 'end');
  return append(`<div class="q-block reveal">
  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
  <div class="${cls}">${mdLite(text)}</div>
- </div>`, intro ? 'start' : 'end');
+ </div>`, where);
 }
 function addUserBubble(text) {
  return append(`<div class="q-block reveal" style="display:flex;flex-direction:column"><div class="user-bubble">${esc(text)}</div></div>`);
@@ -1791,10 +1795,11 @@ async function boot() {
   window.__extrasPrice = 47;
   addBotBubble(
    'Olá! Gostaria de saber quais estratégias de marketing **seus concorrentes estão utilizando para faturar mais?** Posso te mostrar isso agora!',
-   true
+   true,
+   'none'
   );
   setTimeout(() => {
-   const askNode = addBotBubble('Insira seu **Site** e número de **WhatsApp** para receber uma análise de concorrencia gratuita:', true);
+   const askNode = addBotBubble('Insira seu **Site** e número de **WhatsApp** para receber uma análise de concorrencia gratuita:', true, 'none');
    const hint = document.createElement('div');
    hint.className = 'hint';
    hint.innerHTML = 'Exemplo: <code>seusite.com.br, 11999999999</code>';
