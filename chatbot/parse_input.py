@@ -21,7 +21,10 @@ class ParsedInput:
 
 def slugify_client(client_input: str) -> str:
     raw = (client_input or "").strip().lower()
-    raw = raw.replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
+    raw = raw.replace("https://", "").replace("http://", "")
+    if raw.startswith("www."):
+        raw = raw[4:]
+    raw = raw.split("/")[0]
     return re.sub(r"[^a-z0-9]+", "", raw.split(".")[0]) or "cliente"
 
 
@@ -34,6 +37,17 @@ def normalize_url(raw: str) -> str:
             text = "https://" + text
         else:
             return ""
+    try:
+        p = urlparse(text)
+        host = (p.netloc or "").strip()
+        if host:
+            # Hostname case-insensitive; evita Www. virar empresa "Www"
+            host_l = host.lower()
+            if host_l.startswith("www."):
+                host_l = host_l  # mantem www. minusculo padronizado
+            text = p._replace(netloc=host_l).geturl()
+    except Exception:
+        pass
     return text.rstrip("/") + "/"
 
 
@@ -74,12 +88,16 @@ def _competitor_label(raw: str) -> str:
         return ""
     url = normalize_url(text)
     if url:
-        host = (urlparse(url).netloc or "").replace("www.", "").strip().lower()
+        host = (urlparse(url).netloc or "").strip().lower()
+        if host.startswith("www."):
+            host = host[4:]
         if host:
             return host
     # remove protocolo solto se sobrou
     text = re.sub(r"^https?:/*", "", text, flags=re.I).strip(" /.")
-    text = text.replace("www.", "")
+    text = text.lower()
+    if text.startswith("www."):
+        text = text[4:]
     return text.split("/")[0].strip() or text
 
 
@@ -158,7 +176,10 @@ def parse_user_message(message: str) -> ParsedInput:
         result.url = normalize_url(first)
         result.slug = slugify_client(result.url or first)
         host = urlparse(result.url).netloc if result.url else first
-        host = host.replace("www.", "").split("/")[0]
+        host = host.lower()
+        if host.startswith("www."):
+            host = host[4:]
+        host = host.split("/")[0]
         result.company = host.split(".")[0].capitalize() if host else result.slug
 
     if not result.company:

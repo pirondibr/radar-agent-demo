@@ -67,8 +67,10 @@ def slugify(value: str) -> str:
 
 
 def domain_slug(url: str) -> str:
-    netloc = urlparse(url).netloc or url
-    netloc = netloc.replace("www.", "")
+    netloc = (urlparse(url).netloc or url or "").strip()
+    # Case-insensitive: Www. / WWW. / www.
+    if netloc.lower().startswith("www."):
+        netloc = netloc[4:]
     return slugify(netloc.split(".")[0])
 
 
