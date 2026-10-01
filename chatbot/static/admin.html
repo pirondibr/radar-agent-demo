@@ -101,10 +101,13 @@ function funnelBadge(run) {
   return '';
 }
 function adsCampaign(attr) {
-  return String((attr && (attr.utm_campaign || attr.campaignid)) || '').trim();
+  return String((attr && (attr.utm_campaign || attr.campaign_name || attr.campaignid || attr.campaign_id)) || '').trim();
 }
 function adsKeyword(attr) {
-  return String((attr && (attr.utm_term || attr.keyword)) || '').trim();
+  return String((attr && (attr.keyword || attr.adset_name || attr.utm_term || attr.adset_id)) || '').trim();
+}
+function adsCreative(attr) {
+  return String((attr && (attr.ad_name || attr.utm_content || attr.ad_id || attr.creative)) || '').trim();
 }
 function sourceBadge(src) {
   const s = (src || '').trim() || '—';
@@ -137,6 +140,7 @@ async function loadRuns() {
     const a = readAttr(r);
     const camp = adsCampaign(a);
     const kw = adsKeyword(a);
+    const ad = adsCreative(a);
     return `
     <div class="item ${r.id === selectedId ? 'active' : ''}" data-id="${r.id}">
       <div class="t">${esc(r.company || r.slug || r.id)} ${badge(r.status)}</div>
@@ -146,7 +150,8 @@ async function loadRuns() {
         ${sourceBadge(r.traffic_source)}
         ${funnelBadge(r)}
         ${camp ? `<span title="Campanha">camp: ${esc(camp)}</span>` : ''}
-        ${kw ? `<span title="Palavra-chave">kw: ${esc(kw)}</span>` : ''}
+        ${ad ? `<span title="Anúncio">ad: ${esc(ad)}</span>` : ''}
+        ${kw ? `<span title="Keyword / Ad set">kw: ${esc(kw)}</span>` : ''}
         ${r.contact ? `<span title="WhatsApp">WA ${esc(r.contact)}</span>` : ''}
         <span>${fmtTs(r.started_at)}</span>
         <span>${fmtMs(r.duration_ms)}</span>
@@ -178,17 +183,23 @@ async function openRun(id) {
   try { attr = JSON.parse(run.attribution_json || '{}') || {}; } catch(e) {}
   const camp = adsCampaign(attr);
   const kw = adsKeyword(attr);
+  const ad = adsCreative(attr);
   const attrBits = [
     attr.utm_source && ('utm_source=' + attr.utm_source),
     attr.utm_medium && ('utm_medium=' + attr.utm_medium),
     camp && ('campanha=' + camp),
-    kw && ('keyword=' + kw),
+    ad && ('anuncio=' + ad),
+    kw && ('keyword_adset=' + kw),
     attr.utm_content && ('utm_content=' + attr.utm_content),
     attr.adgroupid && ('adgroupid=' + attr.adgroupid),
+    attr.adset_id && ('adset_id=' + attr.adset_id),
+    attr.ad_id && ('ad_id=' + attr.ad_id),
+    attr.campaign_id && ('campaign_id=' + attr.campaign_id),
     attr.creative && ('creative=' + attr.creative),
     attr.network && ('network=' + attr.network),
     attr.matchtype && ('matchtype=' + attr.matchtype),
     attr.device && ('device=' + attr.device),
+    attr.placement && ('placement=' + attr.placement),
     attr.gclid && ('gclid=' + attr.gclid),
     attr.fbclid && 'fbclid',
     attr.referrer && ('ref=' + attr.referrer),
@@ -196,9 +207,13 @@ async function openRun(id) {
     attr.funnel && ('funnel=' + attr.funnel),
     (attr.whatsapp || attr.contact) && ('whatsapp=' + (attr.whatsapp || attr.contact)),
   ].filter(Boolean);
-  const adsHint = (String(run.traffic_source || '').toLowerCase().includes('google') && !camp && !kw)
-    ? '<div class="sub" style="margin-top:8px;color:var(--warn)">Google Ads sem campanha/keyword na URL. Configure o Final URL suffix na conta Ads (veja instruções no chat).</div>'
-    : '';
+  const srcLow = String(run.traffic_source || '').toLowerCase();
+  let adsHint = '';
+  if (srcLow.includes('google') && !camp && !kw) {
+    adsHint = '<div class="sub" style="margin-top:8px;color:var(--warn)">Google Ads sem campanha/keyword na URL. Configure Final URL suffix na conta Ads.</div>';
+  } else if (srcLow.includes('meta') && !camp && !ad) {
+    adsHint = '<div class="sub" style="margin-top:8px;color:var(--warn)">Meta Ads sem campanha/anúncio na URL. Configure URL parameters no Ads Manager ({{campaign.name}}, {{ad.name}}).</div>';
+  }
 
   detail.innerHTML = `
     <h2>${esc(run.company || run.slug || run.id)}</h2>
@@ -219,8 +234,9 @@ async function openRun(id) {
     </div>
     <div class="grid">
       <div class="card"><div class="k">Origem</div><div class="v" style="font-size:14px">${esc(run.traffic_source || '—')} ${funnelBadge(run)}</div></div>
-      <div class="card"><div class="k">Campanha Ads</div><div class="v" style="font-size:13px">${esc(camp || '—')}</div></div>
-      <div class="card"><div class="k">Palavra-chave</div><div class="v" style="font-size:13px">${esc(kw || '—')}</div></div>
+      <div class="card"><div class="k">Campanha</div><div class="v" style="font-size:13px">${esc(camp || '—')}</div></div>
+      <div class="card"><div class="k">Anúncio</div><div class="v" style="font-size:13px">${esc(ad || '—')}</div></div>
+      <div class="card"><div class="k">Keyword / Ad set</div><div class="v" style="font-size:13px">${esc(kw || '—')}</div></div>
       <div class="card"><div class="k">WhatsApp</div><div class="v" style="font-size:14px">${esc(run.contact || attr.whatsapp || attr.contact || '—')}</div></div>
       <div class="card"><div class="k">Duração</div><div class="v">${fmtMs(run.duration_ms)}</div></div>
       <div class="card"><div class="k">Início</div><div class="v" style="font-size:13px">${fmtTs(run.started_at)}</div></div>

@@ -34,6 +34,15 @@ def normalize_attribution(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
         "matchtype",
         "device",
         "placement",
+        # Meta Ads dynamic URL params
+        "campaign_id",
+        "campaign_name",
+        "adset_id",
+        "adset_name",
+        "ad_id",
+        "ad_name",
+        "placement",
+        "site_source_name",
         "referrer",
         "landing",
         "funnel",
@@ -44,8 +53,8 @@ def normalize_attribution(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
         s = str(val).strip()
         if not s:
             continue
-        # ValueTrack vazio vem como {keyword} literal às vezes
-        if s.startswith("{") and s.endswith("}"):
+        # ValueTrack / macros vazios: {keyword} ou {{ad.name}}
+        if (s.startswith("{") and s.endswith("}")) or (s.startswith("{{") and s.endswith("}}")):
             continue
         out[key] = s[:500]
     return out
@@ -53,12 +62,37 @@ def normalize_attribution(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
 
 def ads_campaign(attr: Optional[dict[str, Any]]) -> str:
     a = normalize_attribution(attr)
-    return (a.get("utm_campaign") or a.get("campaignid") or "").strip()
+    return (
+        a.get("utm_campaign")
+        or a.get("campaign_name")
+        or a.get("campaignid")
+        or a.get("campaign_id")
+        or ""
+    ).strip()
 
 
 def ads_keyword(attr: Optional[dict[str, Any]]) -> str:
+    """Google keyword ou Meta ad set (utm_term)."""
     a = normalize_attribution(attr)
-    return (a.get("utm_term") or a.get("keyword") or "").strip()
+    return (
+        a.get("keyword")
+        or a.get("adset_name")
+        or a.get("utm_term")
+        or a.get("adset_id")
+        or ""
+    ).strip()
+
+
+def ads_creative(attr: Optional[dict[str, Any]]) -> str:
+    """Meta ad name/id ou Google creative / utm_content."""
+    a = normalize_attribution(attr)
+    return (
+        a.get("ad_name")
+        or a.get("utm_content")
+        or a.get("ad_id")
+        or a.get("creative")
+        or ""
+    ).strip()
 
 
 def _is_paid_medium(medium: str) -> bool:
