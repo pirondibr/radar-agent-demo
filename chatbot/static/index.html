@@ -27,7 +27,7 @@ fbq('track', 'PageView');
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
   gtag('config', 'G-9JFVQ7LWR8');
-  // Conversao Google Ads / GA4: disparada so apos pagamento confirmado (ver trackGtagPurchase)
+  // Conversao intermediaria: generate_lead (envio do site). Final: purchase (pagamento).
 </script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
@@ -269,7 +269,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.51';
+const APP_VERSION = '1.5.52';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -346,6 +346,29 @@ function trackGtagPurchase(data) {
     gtag('event', 'purchase', payload);
   } catch (e) {
     console.warn('[gtag] purchase failed', e);
+  }
+}
+
+/** Conversao intermediaria: pessoa enviou site (+ WhatsApp) e a analise comecou. */
+function trackGtagGenerateLead(parsed) {
+  if (typeof gtag !== 'function') return;
+  const p = parsed || {};
+  const key = String(p.job_id || p.slug || p.company || '').trim();
+  if (!key) return;
+  if (!window.__gtagLeads) window.__gtagLeads = new Set();
+  if (window.__gtagLeads.has(key)) return;
+  window.__gtagLeads.add(key);
+  const payload = {
+    currency: 'BRL',
+    value: 0,
+    lead_source: (/^\/47\/?$/.test(location.pathname) ? 'radar_47' : 'radar_analysis'),
+    company: p.company || '',
+    slug: p.slug || '',
+  };
+  try {
+    gtag('event', 'generate_lead', payload);
+  } catch (e) {
+    console.warn('[gtag] generate_lead failed', e);
   }
 }
 const BOT_NAME = 'Radar da Concorrência';
@@ -2206,6 +2229,11 @@ async function sendMessage() {
   content_category: OFFER_47 ? 'radar_47' : 'radar_analysis',
   content_ids: [parsedSite.slug || parsedSite.company || 'site'],
  }, wa ? { phone: wa } : undefined);
+ trackGtagGenerateLead({
+  job_id: data.job_id,
+  company: parsedSite.company,
+  slug: parsedSite.slug,
+ });
  if (OFFER_47 && wa) {
   offer47Phone = String(wa).replace(/\D/g, '');
   window.__offer47LeadFired = true;
