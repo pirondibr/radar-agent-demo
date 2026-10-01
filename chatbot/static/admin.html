@@ -141,6 +141,12 @@ async function loadRuns() {
     const camp = adsCampaign(a);
     const kw = adsKeyword(a);
     const ad = adsCreative(a);
+    let summary = {};
+    try { summary = JSON.parse(r.report_summary_json || '{}') || {}; } catch (e) { summary = {}; }
+    const marca = summary.client_brand_fmt || (summary.client_brand != null ? String(summary.client_brand) : '');
+    const gads = summary.client_ads_fmt || (summary.client_ads != null ? String(summary.client_ads) : '');
+    const marcaRank = summary.client_brand_rank ? ` (${summary.client_brand_rank}º)` : '';
+    const gadsRank = summary.client_ads_rank ? ` (${summary.client_ads_rank}º)` : '';
     return `
     <div class="item ${r.id === selectedId ? 'active' : ''}" data-id="${r.id}">
       <div class="t">${esc(r.company || r.slug || r.id)} ${badge(r.status)}</div>
@@ -152,6 +158,8 @@ async function loadRuns() {
         ${camp ? `<span title="Campanha">camp: ${esc(camp)}</span>` : ''}
         ${ad ? `<span title="Anúncio">ad: ${esc(ad)}</span>` : ''}
         ${kw ? `<span title="Keyword / Ad set">kw: ${esc(kw)}</span>` : ''}
+        ${marca ? `<span title="Marca do cliente">Marca: ${esc(marca)}${esc(marcaRank)}</span>` : ''}
+        ${gads ? `<span title="Google Ads do cliente">GAds: ${esc(gads)}${esc(gadsRank)}</span>` : ''}
         ${r.contact ? `<span title="WhatsApp">WA ${esc(r.contact)}</span>` : ''}
         <span>${fmtTs(r.started_at)}</span>
         <span>${fmtMs(r.duration_ms)}</span>
@@ -234,6 +242,8 @@ async function openRun(id) {
     </div>
     <div class="grid">
       <div class="card"><div class="k">Origem</div><div class="v" style="font-size:14px">${esc(run.traffic_source || '—')} ${funnelBadge(run)}</div></div>
+      <div class="card"><div class="k">Marca Cliente</div><div class="v" style="font-size:13px">${esc(summary.client_brand_fmt || (summary.client_brand != null ? String(summary.client_brand) : '—'))}${summary.client_brand_rank ? ` <span style="font-size:11px;color:var(--muted)">${esc(String(summary.client_brand_rank))}º</span>` : ''}</div></div>
+      <div class="card"><div class="k">Google Ads Cliente</div><div class="v" style="font-size:13px">${esc(summary.client_ads_fmt || (summary.client_ads != null ? String(summary.client_ads) : '—'))}${summary.client_ads_rank ? ` <span style="font-size:11px;color:var(--muted)">${esc(String(summary.client_ads_rank))}º</span>` : ''}</div></div>
       <div class="card"><div class="k">Campanha</div><div class="v" style="font-size:13px">${esc(camp || '—')}</div></div>
       <div class="card"><div class="k">Anúncio</div><div class="v" style="font-size:13px">${esc(ad || '—')}</div></div>
       <div class="card"><div class="k">Keyword / Ad set</div><div class="v" style="font-size:13px">${esc(kw || '—')}</div></div>
@@ -389,6 +399,8 @@ async function loadLeads() {
             <th>Empresa</th>
             <th>Contato</th>
             <th>Origem</th>
+            <th>Marca Cliente</th>
+            <th>Google Ads Cliente</th>
             <th>Status</th>
             <th>Job</th>
           </tr>
@@ -401,9 +413,11 @@ async function loadLeads() {
               <td>${esc(l.company || l.slug || '—')}</td>
               <td>${esc((l.contact_type || '') + (l.contact ? ': ' + l.contact : '') || '—')}</td>
               <td>${sourceBadge(l.traffic_source)}</td>
+              <td>${esc(l.client_brand_fmt || '—')}${l.client_brand_rank ? ` (${esc(String(l.client_brand_rank))}º)` : ''}</td>
+              <td>${esc(l.client_ads_fmt || '—')}${l.client_ads_rank ? ` (${esc(String(l.client_ads_rank))}º)` : ''}</td>
               <td>${esc(l.status || '—')}${l.paid ? ' · pago' : ''}</td>
               <td class="mono" style="font-family:var(--mono);font-size:11px">${esc(l.job_id || '—')}</td>
-            </tr>`).join('') || '<tr><td colspan="7">Nenhum lead ainda</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="9">Nenhum lead ainda</td></tr>'}
         </tbody>
       </table>
     </section>

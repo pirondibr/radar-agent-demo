@@ -620,6 +620,23 @@ def summarize_report(report: Optional[dict[str, Any]]) -> dict[str, Any]:
     if not report:
         return {}
     comps = report.get("competitors") or []
+
+    def _client_row(section_key: str) -> dict[str, Any]:
+        sec = report.get(section_key) or {}
+        if not isinstance(sec, dict):
+            return {}
+        for row in sec.get("rows") or []:
+            if isinstance(row, dict) and row.get("is_client"):
+                return row
+        return {}
+
+    gads_row = _client_row("google_ads")
+    brand_row = _client_row("brand")
+    gads_sec = report.get("google_ads") if isinstance(report.get("google_ads"), dict) else {}
+    brand_sec = report.get("brand") if isinstance(report.get("brand"), dict) else {}
+
+    client_ads = gads_row.get("ads")
+    client_brand = brand_row.get("traffic")
     return {
         "client": report.get("client"),
         "competitors_ui": len([c for c in comps if not c.get("is_client")]),
@@ -628,7 +645,58 @@ def summarize_report(report: Optional[dict[str, Any]]) -> dict[str, Any]:
         "has_brand": bool(report.get("brand")),
         "competitors_note": report.get("competitors_note") or "",
         "display_tier": report.get("display_tier") or "",
+        # Metricas do cliente (para priorizar leads no admin)
+        "client_ads": client_ads if client_ads is not None else None,
+        "client_ads_fmt": str(gads_row.get("ads_fmt") or (client_ads if client_ads is not None else "") or ""),
+        "client_ads_invest_fmt": str(gads_row.get("investimento_fmt") or ""),
+        "client_ads_rank": gads_sec.get("client_rank"),
+        "client_brand": client_brand if client_brand is not None else None,
+        "client_brand_fmt": str(brand_row.get("traffic_fmt") or (client_brand if client_brand is not None else "") or ""),
+        "client_brand_rank": brand_sec.get("client_rank"),
     }
+
+
+def parse_run_summary(run: Optional[dict[str, Any]]) -> dict[str, Any]:
+    if not run:
+        return {}
+    try:
+        summary = json.loads(run.get("report_summary_json") or "{}") or {}
+    except Exception:
+        summary = {}
+    if not isinstance(summary, dict):
+        summary = {}
+    # Backfill a partir do report.json salvo (runs antigas sem client_brand/ads)
+    if summary.get("client_ads_fmt") or summary.get("client_brand_fmt"):
+        return summary
+    run_id = str(run.get("id") or "")
+    if not run_id:
+        return summary
+    path = RUNS_DIR / run_id / "report.json"
+    if not path.exists():
+        return summary
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+        fresh = summarize_report(report if isinstance(report, dict) else None)
+        if not (fresh.get("client_ads_fmt") or fresh.get("client_brand_fmt")):
+            return summary
+        merged = {**summary, **{k: v for k, v in fresh.items() if v not in (None, "")}}
+        # Persiste para proximas listagens
+        try:
+            with _lock:
+                conn = _connect()
+                try:
+                    conn.execute(
+                        "UPDATE runs SET report_summary_json = ? WHERE id = ?",
+                        (json.dumps(merged, ensure_ascii=False), run_id),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+        except Exception:
+            pass
+        return merged
+    except Exception:
+        return summary
 
 
 def save_lead(lead: dict[str, Any]) -> None:

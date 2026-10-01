@@ -70,7 +70,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.55"
+APP_VERSION = "1.5.56"
 
 try:
     usage_db.init_db()
@@ -1412,7 +1412,14 @@ def admin_list_runs():
         return jsonify({"error": "unauthorized"}), 403
     limit = min(int(request.args.get("limit") or 50), 200)
     offset = max(int(request.args.get("offset") or 0), 0)
-    return jsonify({"runs": usage_db.list_runs(limit=limit, offset=offset)})
+    runs = usage_db.list_runs(limit=limit, offset=offset)
+    for r in runs:
+        try:
+            summary = usage_db.parse_run_summary(r)
+            r["report_summary_json"] = json.dumps(summary, ensure_ascii=False)
+        except Exception:
+            pass
+    return jsonify({"runs": runs})
 
 
 @app.get("/api/admin/leads")
@@ -1420,7 +1427,24 @@ def admin_list_leads():
     if not _admin_authorized():
         return jsonify({"error": "unauthorized"}), 403
     limit = min(int(request.args.get("limit") or 80), 200)
-    return jsonify({"leads": usage_db.list_leads(limit=limit)})
+    leads = usage_db.list_leads(limit=limit)
+    for lead in leads:
+        jid = (lead.get("job_id") or "").strip()
+        if not jid:
+            continue
+        try:
+            run = usage_db.get_run(jid)
+            summary = usage_db.parse_run_summary(run)
+            lead["client_brand_fmt"] = summary.get("client_brand_fmt") or ""
+            lead["client_brand_rank"] = summary.get("client_brand_rank")
+            lead["client_ads_fmt"] = summary.get("client_ads_fmt") or ""
+            lead["client_ads_rank"] = summary.get("client_ads_rank")
+            lead["client_ads_invest_fmt"] = summary.get("client_ads_invest_fmt") or ""
+            if not lead.get("traffic_source") and run:
+                lead["traffic_source"] = run.get("traffic_source") or ""
+        except Exception:
+            pass
+    return jsonify({"leads": leads})
 
 
 @app.get("/api/admin/runs/<run_id>")
