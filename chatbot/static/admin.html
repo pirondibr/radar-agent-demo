@@ -25,7 +25,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .item{padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer}
 .item:hover,.item.active{background:var(--panel2)}
 .item .t{font-weight:600;font-size:13px;margin-bottom:4px}
-.item .s{font-size:11px;color:var(--muted);font-family:var(--mono);display:flex;gap:8px;flex-wrap:wrap}
+.item .s{font-size:11px;color:var(--muted);font-family:var(--mono);display:flex;gap:8px;flex-wrap:wrap;margin-top:3px}
+.item .s-metrics{gap:10px}
+.item .s-metrics .metric{padding:2px 7px;border-radius:5px;border:1px solid transparent;background:rgba(139,147,167,.08)}
+.item .s-metrics .metric.hot-marca{color:#fcd34d;background:rgba(245,158,11,.18);border-color:rgba(245,158,11,.35);font-weight:700}
+.item .s-metrics .metric.hot-gads{color:#6ee7b7;background:rgba(16,185,129,.16);border-color:rgba(16,185,129,.35);font-weight:700}
 .badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase}
 .b-done{background:rgba(16,185,129,.15);color:var(--ok)}
 .b-error{background:rgba(239,68,68,.15);color:var(--err)}
@@ -119,6 +123,11 @@ function sourceBadge(src) {
   else if (low.includes('diret')) cls += ' b-src-direct';
   return `<span class="badge ${cls}" title="Origem do lead/tráfego">${esc(s)}</span>`;
 }
+function metricNum(raw) {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
 
 let selectedId = null;
 
@@ -143,10 +152,14 @@ async function loadRuns() {
     const ad = adsCreative(a);
     let summary = {};
     try { summary = JSON.parse(r.report_summary_json || '{}') || {}; } catch (e) { summary = {}; }
-    const marca = summary.client_brand_fmt || (summary.client_brand != null ? String(summary.client_brand) : '');
-    const gads = summary.client_ads_fmt || (summary.client_ads != null ? String(summary.client_ads) : '');
+    const marcaNum = metricNum(summary.client_brand);
+    const gadsNum = metricNum(summary.client_ads);
+    const marca = summary.client_brand_fmt || (marcaNum != null ? String(marcaNum) : '');
+    const gads = summary.client_ads_fmt || (gadsNum != null ? String(gadsNum) : '');
     const marcaRank = summary.client_brand_rank ? ` (${summary.client_brand_rank}º)` : '';
     const gadsRank = summary.client_ads_rank ? ` (${summary.client_ads_rank}º)` : '';
+    const marcaHot = marcaNum != null && marcaNum > 100;
+    const gadsHot = gadsNum != null && gadsNum > 10;
     return `
     <div class="item ${r.id === selectedId ? 'active' : ''}" data-id="${r.id}">
       <div class="t">${esc(r.company || r.slug || r.id)} ${badge(r.status)}</div>
@@ -155,11 +168,15 @@ async function loadRuns() {
         <span>${esc(r.mode || '—')}</span>
         ${sourceBadge(r.traffic_source)}
         ${funnelBadge(r)}
+      </div>
+      <div class="s s-metrics">
+        <span class="metric${marcaHot ? ' hot-marca' : ''}" title="Marca do cliente">Marca: ${esc(marca || '—')}${esc(marcaRank)}</span>
+        <span class="metric${gadsHot ? ' hot-gads' : ''}" title="Google Ads do cliente">GAds: ${esc(gads || '—')}${esc(gadsRank)}</span>
+      </div>
+      <div class="s">
         ${camp ? `<span title="Campanha">camp: ${esc(camp)}</span>` : ''}
         ${ad ? `<span title="Anúncio">ad: ${esc(ad)}</span>` : ''}
         ${kw ? `<span title="Keyword / Ad set">kw: ${esc(kw)}</span>` : ''}
-        ${marca ? `<span title="Marca do cliente">Marca: ${esc(marca)}${esc(marcaRank)}</span>` : ''}
-        ${gads ? `<span title="Google Ads do cliente">GAds: ${esc(gads)}${esc(gadsRank)}</span>` : ''}
         ${r.contact ? `<span title="WhatsApp">WA ${esc(r.contact)}</span>` : ''}
         <span>${fmtTs(r.started_at)}</span>
         <span>${fmtMs(r.duration_ms)}</span>
