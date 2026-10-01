@@ -18,10 +18,22 @@ def normalize_attribution(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
         "utm_campaign",
         "utm_content",
         "utm_term",
+        "utm_id",
         "gclid",
+        "gbraid",
+        "wbraid",
         "fbclid",
         "msclkid",
         "ttclid",
+        # Google Ads ValueTrack (via Final URL suffix)
+        "campaignid",
+        "adgroupid",
+        "keyword",
+        "creative",
+        "network",
+        "matchtype",
+        "device",
+        "placement",
         "referrer",
         "landing",
         "funnel",
@@ -32,8 +44,21 @@ def normalize_attribution(raw: Optional[dict[str, Any]]) -> dict[str, Any]:
         s = str(val).strip()
         if not s:
             continue
+        # ValueTrack vazio vem como {keyword} literal às vezes
+        if s.startswith("{") and s.endswith("}"):
+            continue
         out[key] = s[:500]
     return out
+
+
+def ads_campaign(attr: Optional[dict[str, Any]]) -> str:
+    a = normalize_attribution(attr)
+    return (a.get("utm_campaign") or a.get("campaignid") or "").strip()
+
+
+def ads_keyword(attr: Optional[dict[str, Any]]) -> str:
+    a = normalize_attribution(attr)
+    return (a.get("utm_term") or a.get("keyword") or "").strip()
 
 
 def _is_paid_medium(medium: str) -> bool:

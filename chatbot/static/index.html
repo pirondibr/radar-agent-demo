@@ -269,15 +269,16 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.53';
+const APP_VERSION = '1.5.54';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
   const KEY = 'radar_attr';
   const qs = new URLSearchParams(location.search);
   const keys = [
-    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
-    'gclid', 'fbclid', 'msclkid', 'ttclid',
+    'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'utm_id',
+    'gclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'ttclid',
+    'campaignid', 'adgroupid', 'keyword', 'creative', 'network', 'matchtype', 'device', 'placement',
   ];
   let prev = {};
   try { prev = JSON.parse(sessionStorage.getItem(KEY) || '{}') || {}; } catch (e) { prev = {}; }

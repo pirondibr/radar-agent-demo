@@ -100,6 +100,12 @@ function funnelBadge(run) {
   }
   return '';
 }
+function adsCampaign(attr) {
+  return String((attr && (attr.utm_campaign || attr.campaignid)) || '').trim();
+}
+function adsKeyword(attr) {
+  return String((attr && (attr.utm_term || attr.keyword)) || '').trim();
+}
 function sourceBadge(src) {
   const s = (src || '').trim() || '—';
   let cls = 'b-src';
@@ -127,7 +133,11 @@ async function loadRuns() {
     el.innerHTML = '<div class="empty">Nenhum uso registrado ainda</div>';
     return;
   }
-  el.innerHTML = runs.map(r => `
+  el.innerHTML = runs.map(r => {
+    const a = readAttr(r);
+    const camp = adsCampaign(a);
+    const kw = adsKeyword(a);
+    return `
     <div class="item ${r.id === selectedId ? 'active' : ''}" data-id="${r.id}">
       <div class="t">${esc(r.company || r.slug || r.id)} ${badge(r.status)}</div>
       <div class="s">
@@ -135,11 +145,14 @@ async function loadRuns() {
         <span>${esc(r.mode || '—')}</span>
         ${sourceBadge(r.traffic_source)}
         ${funnelBadge(r)}
+        ${camp ? `<span title="Campanha">camp: ${esc(camp)}</span>` : ''}
+        ${kw ? `<span title="Palavra-chave">kw: ${esc(kw)}</span>` : ''}
         ${r.contact ? `<span title="WhatsApp">WA ${esc(r.contact)}</span>` : ''}
         <span>${fmtTs(r.started_at)}</span>
         <span>${fmtMs(r.duration_ms)}</span>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   el.querySelectorAll('.item').forEach(node => {
     node.addEventListener('click', () => openRun(node.dataset.id));
   });
@@ -163,17 +176,29 @@ async function openRun(id) {
   try { summary = JSON.parse(run.report_summary_json || '{}') || {}; } catch(e) {}
   let attr = {};
   try { attr = JSON.parse(run.attribution_json || '{}') || {}; } catch(e) {}
+  const camp = adsCampaign(attr);
+  const kw = adsKeyword(attr);
   const attrBits = [
     attr.utm_source && ('utm_source=' + attr.utm_source),
     attr.utm_medium && ('utm_medium=' + attr.utm_medium),
-    attr.utm_campaign && ('utm_campaign=' + attr.utm_campaign),
-    attr.gclid && 'gclid',
+    camp && ('campanha=' + camp),
+    kw && ('keyword=' + kw),
+    attr.utm_content && ('utm_content=' + attr.utm_content),
+    attr.adgroupid && ('adgroupid=' + attr.adgroupid),
+    attr.creative && ('creative=' + attr.creative),
+    attr.network && ('network=' + attr.network),
+    attr.matchtype && ('matchtype=' + attr.matchtype),
+    attr.device && ('device=' + attr.device),
+    attr.gclid && ('gclid=' + attr.gclid),
     attr.fbclid && 'fbclid',
     attr.referrer && ('ref=' + attr.referrer),
     attr.landing && ('landing=' + attr.landing),
     attr.funnel && ('funnel=' + attr.funnel),
     (attr.whatsapp || attr.contact) && ('whatsapp=' + (attr.whatsapp || attr.contact)),
   ].filter(Boolean);
+  const adsHint = (String(run.traffic_source || '').toLowerCase().includes('google') && !camp && !kw)
+    ? '<div class="sub" style="margin-top:8px;color:var(--warn)">Google Ads sem campanha/keyword na URL. Configure o Final URL suffix na conta Ads (veja instruções no chat).</div>'
+    : '';
 
   detail.innerHTML = `
     <h2>${esc(run.company || run.slug || run.id)}</h2>
@@ -194,14 +219,15 @@ async function openRun(id) {
     </div>
     <div class="grid">
       <div class="card"><div class="k">Origem</div><div class="v" style="font-size:14px">${esc(run.traffic_source || '—')} ${funnelBadge(run)}</div></div>
+      <div class="card"><div class="k">Campanha Ads</div><div class="v" style="font-size:13px">${esc(camp || '—')}</div></div>
+      <div class="card"><div class="k">Palavra-chave</div><div class="v" style="font-size:13px">${esc(kw || '—')}</div></div>
       <div class="card"><div class="k">WhatsApp</div><div class="v" style="font-size:14px">${esc(run.contact || attr.whatsapp || attr.contact || '—')}</div></div>
       <div class="card"><div class="k">Duração</div><div class="v">${fmtMs(run.duration_ms)}</div></div>
       <div class="card"><div class="k">Início</div><div class="v" style="font-size:13px">${fmtTs(run.started_at)}</div></div>
       <div class="card"><div class="k">Tipo</div><div class="v" style="font-size:14px">${esc(run.kind)}</div></div>
-      <div class="card"><div class="k">Concorrentes UI</div><div class="v">${summary.competitors_ui ?? '—'}</div></div>
       <div class="card"><div class="k">Slug</div><div class="v" style="font-size:13px">${esc(run.slug || '—')}</div></div>
     </div>
-    ${attrBits.length ? `<section><h3>Atribuição (UTM / clique)</h3><div class="sub" style="margin:0">${esc(attrBits.join(' · '))}</div></section>` : ''}
+    ${(attrBits.length || adsHint) ? `<section><h3>Atribuição (UTM / Google Ads)</h3><div class="sub" style="margin:0">${esc(attrBits.join(' · ') || 'sem UTM/ValueTrack')}</div>${adsHint}</section>` : ''}
 
     <section>
       <h3>Etapas</h3>
