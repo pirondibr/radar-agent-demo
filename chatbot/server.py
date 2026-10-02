@@ -46,6 +46,14 @@ from openai_capi import configured as openai_capi_configured
 from openai_capi import send_event as send_openai_event
 from attribution import classify_traffic_source, normalize_attribution
 from report_html import load_saved_report, render_report_html, report_has_channel_sections
+from locale_util import (
+    brand_for,
+    chat_errors,
+    hello_payload,
+    localize_steps,
+    normalize_locale,
+    resolve_locale,
+)
 import usage_db
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -72,7 +80,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.64"
+APP_VERSION = "1.5.70"
 
 try:
     usage_db.init_db()
@@ -131,6 +139,15 @@ def _attribution_from_payload(data: Optional[dict] = None) -> tuple[str, dict]:
     return classify_traffic_source(attr), attr
 
 
+def _request_locale(data: Optional[dict] = None) -> str:
+    payload = data if isinstance(data, dict) else {}
+    return resolve_locale(
+        request.host or "",
+        query_lang=str(request.args.get("lang") or ""),
+        body_locale=str(payload.get("locale") or payload.get("lang") or ""),
+    )
+
+
 @dataclass
 class Job:
     job_id: str
@@ -144,6 +161,7 @@ class Job:
     awaiting: str = ""
     gate: threading.Event = field(default_factory=threading.Event)
     gate_payload: dict = field(default_factory=dict)
+    locale: str = "pt"
 
 
 jobs: dict[str, Job] = {}
@@ -218,10 +236,11 @@ def _worker(job: Job) -> None:
                 demo=bool(job.parsed.demo),
                 preferred_competitors=job.parsed.competitors,
                 run_id=job.job_id,
+                locale=job.locale,
             )
         else:
             report = run_pipeline(
-                job.parsed, _emit, _set_step, run_id=job.job_id, wait_fn=_wait_fn
+                job.parsed, _emit, _set_step, run_id=job.job_id, wait_fn=_wait_fn, locale=job.locale
             )
         job.report = report
         job.status = "done"
@@ -303,42 +322,29 @@ def offer_47():
 def hello():
     keys = _live_keys_ready()
     live_ok = (not DEMO_ONLY) and all(keys.values())
-    greeting = (
-        "Olá! Eu sou o Agente de IA **Radar da Concorrência**. "
-        "Eu posso analisar os canais de marketing da sua empresa e dos "
-        "seus concorrentes, e te mostrar onde você está ganhando ou perdendo "
-        "espaço e dinheiro no seu nicho."
-    )
-    ask = (
-        "Para iniciarmos a análise gratuita, envie o **endereço do seu site** e o seu "
-        "**WhatsApp com DDD** (pode ser na mesma mensagem)."
-    )
-    if DEMO_ONLY:
-        examples = ["seusite.com.br, 11999999999"]
-    elif live_ok:
-        examples = ["seusite.com.br, 11999999999"]
-    else:
-        missing = ", ".join(_missing_live_keys())
-        ask = (
-            "Para iniciarmos a análise gratuita, envie o **endereço do seu site** e o seu "
-            "**WhatsApp com DDD**. "
-            f"(Servidor ainda sem todas as API keys: {missing}.)"
-        )
-        examples = ["seusite.com.br, 11999999999"]
+    locale = _request_locale()
+    copy = hello_payload(locale, live_ok=live_ok, missing_keys=_missing_live_keys() if not live_ok else None)
+    brand = brand_for(locale)
     return jsonify({
-        "greeting": greeting,
-        "ask": ask,
-        "examples": examples,
-        "steps": STEP_DEFS,
+        "greeting": copy["greeting"],
+        "ask": copy["ask"],
+        "examples": copy["examples"],
+        "steps": localize_steps(STEP_DEFS, locale),
         "demo_only": DEMO_ONLY,
         "live_ready": live_ok,
         "keys_ready": keys,
-        "payments_ready": mp_configured(),
+        "payments_ready": mp_configured() and locale != "en",
+        "checkout_enabled": locale != "en",
         "meta_capi_ready": capi_configured(),
         "openai_capi_ready": openai_capi_configured(),
         "pro_price": PRO_PRICE,
         "extras_price": EXTRAS_PRICE,
         "version": APP_VERSION,
+        "locale": locale,
+        "brand": brand["brand"],
+        "brand_short": brand["brand_short"],
+        "brand_mark": brand["mark"],
+        "tagline": brand["tagline"],
     })
 
 
@@ -405,9 +411,11 @@ def openai_capi_event():
 @app.post("/api/chat")
 def chat():
     data = request.get_json(silent=True) or {}
+    locale = _request_locale(data)
+    errs = chat_errors(locale)
     message = (data.get("message") or "").strip()
     if not message:
-        return jsonify({"error": "Mensagem vazia"}), 400
+        return jsonify({"error": errs["empty"]}), 400
 
     whatsapp = (
         extract_whatsapp(str(data.get("whatsapp") or data.get("contact") or ""))
@@ -421,21 +429,16 @@ def chat():
     parsed = parse_user_message(site_message or message)
     if not parsed.company and not parsed.slug and not parsed.demo:
         return jsonify({
-            "error": (
-                "Não identifiquei o site. Envie o endereço e o WhatsApp com DDD — "
-                "ex: `seusite.com.br, 11999999999`."
-            ),
+            "error": errs["need_site"],
             "need": "site",
             "parsed": None,
+            "locale": locale,
         }), 400
 
     # Analise gratuita exige WhatsApp (exceto demo/video)
     if not parsed.demo and not whatsapp:
         return jsonify({
-            "error": (
-                "Para liberar a análise gratuita, preciso do seu **WhatsApp com DDD**. "
-                "Pode enviar junto com o site, ex: `seusite.com.br, 11999999999`."
-            ),
+            "error": errs["need_phone"],
             "need": "whatsapp",
             "parsed": {
                 "company": parsed.company,
@@ -444,6 +447,7 @@ def chat():
                 "competitors": parsed.competitors,
                 "demo": False,
             },
+            "locale": locale,
         }), 400
 
     if DEMO_ONLY:
@@ -451,10 +455,7 @@ def chat():
         is_demo_request = bool(parsed.demo) or (parsed.slug or "").lower() == "chatguru"
         if not is_demo_request:
             return jsonify({
-                "error": (
-                    "Neste ambiente a analise ao vivo ainda nao esta liberada. "
-                    "Configure DEMO_ONLY=0 + API keys para analisar o seu site."
-                ),
+                "error": errs["demo_only"],
                 "parsed": {
                     "company": parsed.company,
                     "url": parsed.url,
@@ -463,6 +464,7 @@ def chat():
                     "demo": False,
                 },
                 "demo_only": True,
+                "locale": locale,
             }), 400
         parsed.demo = True
         parsed.company = "Chatguru (demo)"
@@ -472,17 +474,14 @@ def chat():
         missing = _missing_live_keys()
         if missing:
             return jsonify({
-                "error": (
-                    "Analise ao vivo precisa das API keys no Render Environment: "
-                    + ", ".join(missing)
-                    + "."
-                ),
+                "error": errs["missing_keys"] + ", ".join(missing) + ".",
                 "missing_keys": missing,
                 "demo_only": False,
+                "locale": locale,
             }), 503
 
     job_id = uuid.uuid4().hex[:12]
-    job = Job(job_id=job_id, parsed=parsed)
+    job = Job(job_id=job_id, parsed=parsed, locale=normalize_locale(locale))
     for s in STEP_DEFS:
         job.steps[s["id"]] = {"state": "pending", "detail": "", "at": 0}
     jobs[job_id] = job
@@ -555,14 +554,27 @@ def chat():
             "demo": parsed.demo,
             "whatsapp": whatsapp,
         },
-        "steps": STEP_DEFS,
-        "ack": _ack_message(parsed),
+        "steps": localize_steps(STEP_DEFS, locale),
+        "ack": _ack_message(parsed, locale),
         "demo_only": DEMO_ONLY,
+        "locale": locale,
+        "checkout_enabled": locale != "en",
     })
 
 
-def _ack_message(parsed: ParsedInput) -> str:
-    name = parsed.company or parsed.slug or "seu site"
+def _ack_message(parsed: ParsedInput, locale: str = "pt") -> str:
+    name = parsed.company or parsed.slug or ("your site" if locale == "en" else "seu site")
+    if locale == "en":
+        if parsed.competitors:
+            return (
+                f"Perfect. I'll analyze **{name}** and the competitors you listed "
+                f"({', '.join(parsed.competitors)}). "
+                "(estimated time about 5 min.)."
+            )
+        return (
+            f"Perfect. I'll analyze **{name}** and find your competitors. "
+            "(estimated time about 5 min.)."
+        )
     if parsed.competitors:
         return (
             f"Perfeito. Vou analisar seu site **{name}** e os concorrentes "
@@ -579,6 +591,11 @@ def _ack_message(parsed: ParsedInput) -> str:
 def checkout():
     """Cria Checkout Pro (PIX + cartao) para Radar Pro R$99."""
     data = request.get_json(silent=True) or {}
+    if _request_locale(data) == "en":
+        return jsonify({
+            "error": "Paid checkout is not available on Winner Tracker yet. Contact us for a deeper analysis.",
+            "checkout_enabled": False,
+        }), 503
     channel = (data.get("channel") or "").strip() or "canal"
     if not mp_configured():
         return jsonify({
@@ -920,7 +937,7 @@ def start_extras():
         raw=f"extras:{slug}",
     )
     job_id = uuid.uuid4().hex[:12]
-    job = Job(job_id=job_id, parsed=parsed)
+    job = Job(job_id=job_id, parsed=parsed, locale=_request_locale(data))
     for s in EXTRA_STEP_DEFS:
         job.steps[s["id"]] = {"state": "pending", "detail": "", "at": 0}
     jobs[job_id] = job
@@ -1050,7 +1067,7 @@ def enrich_competitors():
         kind="enrich",
         raw=f"enrich:{slug}",
     )
-    job = Job(job_id=job_id, parsed=parsed)
+    job = Job(job_id=job_id, parsed=parsed, locale=_request_locale(data))
     jobs[job_id] = job
 
     def _worker_enrich() -> None:

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextvars
 from pathlib import Path
 from typing import Any, Optional
 
@@ -11,6 +12,64 @@ import openpyxl
 ADS_COST_PER_AD = 1500  # R$ estimado / anuncio ativo Google (Transparency)
 META_ADS_COST_PER_AD = 500  # R$ estimado / anuncio ativo Meta
 
+_report_locale: contextvars.ContextVar[str] = contextvars.ContextVar("report_locale", default="pt")
+
+
+def set_report_locale(locale: str) -> None:
+    _report_locale.set("en" if str(locale or "").lower().startswith("en") else "pt")
+
+
+def report_locale() -> str:
+    return _report_locale.get()
+
+
+def L(pt: str, en: str) -> str:
+    return en if report_locale() == "en" else pt
+
+
+def _en_rank_insight(
+    channel: str,
+    client_label: str,
+    *,
+    rank: Optional[int],
+    n: int,
+    client: Optional[dict[str, Any]],
+    leader: dict[str, Any],
+    metric_key: str = "traffic_fmt",
+) -> tuple[str, str]:
+    """Compact English insight + Pro hook for free report sections."""
+    unit = {
+        "brand": "brand searches/mo",
+        "ads": "active ads",
+        "seo": "organic visits/mo",
+    }.get(channel, "metric")
+    leader_v = leader.get(metric_key) or leader.get("ads_fmt") or leader.get("value_fmt") or "—"
+    if rank is None or client is None:
+        body = (
+            f"{client_label} is not in this {channel} ranking cut. "
+            f"{leader.get('name', 'The leader')} leads with {leader_v} ({unit})."
+        )
+        hook = "In Pro we unpack why the leader wins and what you can copy with method."
+        return body, hook
+    client_v = client.get(metric_key) or client.get("ads_fmt") or client.get("value_fmt") or "—"
+    if rank == 1:
+        body = (
+            f"{client_label} leads this {channel} group ({client_v} {unit}). "
+            "Leadership helps, but #2 may be accelerating with angles you are not using yet."
+        )
+    elif rank <= 3:
+        body = (
+            f"{client_label} ranks #{rank} of {n} in {channel} ({client_v} {unit}). "
+            f"Top 3 position — clear room to study who is ahead of you (leader: {leader.get('name')} at {leader_v})."
+        )
+    else:
+        body = (
+            f"{client_label} ranks #{rank} of {n} in {channel} "
+            f"({client_v} vs {leader_v} for {leader.get('name')})."
+        )
+    hook = "In Pro we compare creatives, keywords, and the plays the niche leader uses that you still do not."
+    return body, hook
+
 
 def _google_transparency_url(domain: str, existing: str = "") -> str:
     if (existing or "").strip():
@@ -18,7 +77,8 @@ def _google_transparency_url(domain: str, existing: str = "") -> str:
     dom = (domain or "").strip().lower().replace("https://", "").replace("http://", "").replace("www.", "").split("/")[0]
     if not dom:
         return ""
-    return f"https://adstransparency.google.com/?region=BR&domain={dom}"
+    region = "US" if report_locale() == "en" else "BR"
+    return f"https://adstransparency.google.com/?region={region}&domain={dom}"
 
 
 def _meta_ads_library_url(domain: str, name: str = "", existing: str = "") -> str:
@@ -26,11 +86,12 @@ def _meta_ads_library_url(domain: str, name: str = "", existing: str = "") -> st
         return existing.strip()
     from urllib.parse import quote
     q = (name or domain or "").strip()
+    country = "US" if report_locale() == "en" else "BR"
     if not q:
-        return "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=BR"
+        return f"https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country={country}"
     return (
         "https://www.facebook.com/ads/library/?active_status=active&ad_type=all"
-        f"&country=BR&q={quote(q)}&search_type=keyword_unordered"
+        f"&country={country}&q={quote(q)}&search_type=keyword_unordered"
     )
 
 # Fallbacks quando Metricas Canais omite o cliente (export incompleto).
@@ -257,9 +318,9 @@ def _build_brand_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict
     """Free comparative analysis + Pro hook for Brand Search (Semrush)."""
     if not rows:
         return {
-            "title": "Analise Cliente vs concorrentes",
+            "title": L("Analise Cliente vs concorrentes", "Client vs competitors analysis"),
             "body": f"Sem dados de busca de marca suficientes para comparar {client_label}.",
-            "hook": "Na versão Pro aprofundamos awareness, diferenciais e por que o líder cresce mais que você.",
+            "hook": L("Na versão Pro aprofundamos awareness, diferenciais e por que o líder cresce mais que você.", "In Pro we dig into awareness, differentiators, and why the leader grows faster than you."),
         }
 
     client_rows = [r for r in rows if r.get("is_client")]
@@ -268,7 +329,7 @@ def _build_brand_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict
 
     if not client_rows:
         return {
-            "title": "Analise Cliente vs concorrentes",
+            "title": L("Analise Cliente vs concorrentes", "Client vs competitors analysis"),
             "body": (
                 f"{client_label} não entrou no ranking de marca deste recorte. "
                 f"{leader['name']} lidera com {leader['traffic_fmt']} buscas/mês, "
@@ -350,7 +411,11 @@ def _build_brand_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict
             "Na versão Pro explicamos por que essa empresa sobe mais, e quais diferenciais sustentam a liderança."
         )
 
-    return {"title": "Analise Cliente vs concorrentes", "body": body, "hook": hook}
+    if report_locale() == "en":
+        body, hook = _en_rank_insight(
+            "brand", client_label, rank=rank, n=n, client=client, leader=leader, metric_key="traffic_fmt"
+        )
+    return {"title": L("Analise Cliente vs concorrentes", "Client vs competitors analysis"), "body": body, "hook": hook}
 
 
 def _is_client_entity(entity: dict[str, Any], client_name: str, client_domain: str = "") -> bool:
@@ -498,29 +563,32 @@ def filter_competitors_for_display(competitors: list[dict[str, Any]]) -> tuple[l
         if medios_all:
             chosen = medios_all[:COMPETITORS_DISPLAY_LIMIT]
             display_tier = "medio"
-            note = (
-                "Nenhum concorrente classificado como Alta similaridade. "
-                "Mostrando concorrentes de similaridade média."
+            note = L(
+                "Nenhum concorrente classificado como Alta similaridade. Mostrando concorrentes de similaridade média.",
+                "No high-similarity competitors. Showing medium-similarity competitors.",
             )
         else:
             preferred = [c for c in non_client if _is_user_pick(c)][:COMPETITORS_DISPLAY_LIMIT]
             if preferred:
                 chosen = preferred
                 display_tier = "preferred"
-                note = (
-                    "Nenhum concorrente Alto/Médio. "
-                    "Mostrando concorrentes sugeridos / encontrados."
+                note = L(
+                    "Nenhum concorrente Alto/Médio. Mostrando concorrentes sugeridos / encontrados.",
+                    "No high/medium competitors. Showing suggested / found competitors.",
                 )
             elif non_client:
                 chosen = non_client[:COMPETITORS_DISPLAY_LIMIT]
                 display_tier = "any"
-                note = (
-                    "Nenhum concorrente Alto/Médio. "
-                    f"Mostrando os {len(chosen)} concorrentes encontrados na pesquisa."
+                note = L(
+                    f"Nenhum concorrente Alto/Médio. Mostrando os {len(chosen)} concorrentes encontrados na pesquisa.",
+                    f"No high/medium competitors. Showing the {len(chosen)} competitors found in research.",
                 )
             else:
                 display_tier = "none"
-                note = "A pesquisa não encontrou concorrentes para este site."
+                note = L(
+                    "A pesquisa não encontrou concorrentes para este site.",
+                    "The research found no competitors for this site.",
+                )
 
     # Garante que picks do usuario aparecem mesmo se o top Alto ja estiver cheio
     seen = {(c.get("domain") or "").lower() for c in chosen}
@@ -553,7 +621,7 @@ def _build_ads_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict[s
     """Free comparative analysis + Pro hook for Google Ads."""
     if not rows:
         return {
-            "title": "Análise",
+            "title": L("Análise", "Analysis"),
             "body": (
                 f"Ainda não encontramos anúncios ativos no grupo de {client_label}. "
                 "Isso pode ser oportunidade, ou um sinal de que a concorrência está quieta neste canal."
@@ -572,7 +640,7 @@ def _build_ads_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict[s
     if not client_rows:
         leader_x = (leader["ads"] / 1) if leader.get("ads") else 0
         return {
-            "title": "Analise Cliente vs concorrentes",
+            "title": L("Analise Cliente vs concorrentes", "Client vs competitors analysis"),
             "body": (
                 f"{client_label} não aparece com anúncios ativos neste recorte, enquanto "
                 f"{leader['name']} lidera com {leader['ads_fmt']} anúncios "
@@ -637,16 +705,20 @@ def _build_ads_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict[s
             "Na versão Pro mostramos os top anúncios do líder e os ângulos que você ainda não está usando."
         )
 
-    return {"title": "Analise Cliente vs concorrentes", "body": body, "hook": hook}
+    if report_locale() == "en":
+        body, hook = _en_rank_insight(
+            "ads", client_label, rank=rank, n=n, client=client, leader=leader, metric_key="ads_fmt"
+        )
+    return {"title": L("Analise Cliente vs concorrentes", "Client vs competitors analysis"), "body": body, "hook": hook}
 
 
 def _build_seo_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict[str, str]:
     """Free comparative analysis + Pro hook for SEO."""
     if not rows:
         return {
-            "title": "Análise",
+            "title": L("Análise", "Analysis"),
             "body": f"Sem dados de tráfego orgânico suficientes para comparar {client_label}.",
-            "hook": "Na versão Pro aprofundamos palavras-chave e páginas que puxam o crescimento dos concorrentes.",
+            "hook": L("Na versão Pro aprofundamos palavras-chave e páginas que puxam o crescimento dos concorrentes.", "In Pro we dig into keywords and pages driving competitor growth."),
         }
 
     client_rows = [r for r in rows if r.get("is_client")]
@@ -655,7 +727,7 @@ def _build_seo_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict[s
 
     if not client_rows:
         return {
-            "title": "Analise Cliente vs concorrentes",
+            "title": L("Analise Cliente vs concorrentes", "Client vs competitors analysis"),
             "body": (
                 f"{client_label} não entrou no ranking de SEO deste recorte. "
                 f"{leader['name']} lidera com {leader['traffic_fmt']} visitas/mês."
@@ -767,7 +839,11 @@ def _build_seo_analysis(client_label: str, rows: list[dict[str, Any]]) -> dict[s
             "Na versão Pro explicamos o porquê dessa divergência e o que copiar (com método) do crescimento deles."
         )
 
-    return {"title": "Analise Cliente vs concorrentes", "body": body, "hook": hook}
+    if report_locale() == "en":
+        body, hook = _en_rank_insight(
+            "seo", client_label, rank=rank, n=n, client=client, leader=leader, metric_key="traffic_fmt"
+        )
+    return {"title": L("Analise Cliente vs concorrentes", "Client vs competitors analysis"), "body": body, "hook": hook}
 
 
 def build_report_from_xlsx(
@@ -1268,7 +1344,7 @@ def build_report_from_xlsx(
             "client_rank": client_rank,
             "rows": table,
             "insight": body,
-            "analysis_title": f"Analise Cliente vs concorrentes ({label})",
+            "analysis_title": L(f"Analise Cliente vs concorrentes ({label})", f"Client vs competitors analysis ({label})"),
             "pro_hook": hook,
             "unit": unit,
         }
@@ -1317,30 +1393,30 @@ def build_report_from_xlsx(
         "leader": meta_leader,
         "client_rank": meta_client_rank,
         "rows": meta_table,
-        "insight": "Estimativa de investimento Meta: R$ %s por anúncio ativo." % META_ADS_COST_PER_AD,
-        "analysis_title": "Analise Cliente vs concorrentes (Meta Ads)",
-        "pro_hook": "Na versão Pro comparamos criativos Meta, formatos e o que o líder testa e você ainda não.",
+        "insight": L("Estimativa de investimento Meta: R$ %s por anúncio ativo." % META_ADS_COST_PER_AD, "Estimated Meta spend: R$ %s per active ad." % META_ADS_COST_PER_AD),
+        "analysis_title": L("Analise Cliente vs concorrentes (Meta Ads)", "Client vs competitors analysis (Meta Ads)"),
+        "pro_hook": L("Na versão Pro comparamos criativos Meta, formatos e o que o líder testa e você ainda não.", "In Pro we compare Meta creatives, formats, and what the leader tests that you do not yet."),
         "unit": "anúncios",
         "show_investment": True,
         "cost_per_ad": META_ADS_COST_PER_AD,
     }
     linkedin_section = _count_section(
         "linkedin_ads", "linkedin_ads_url", "LinkedIn Ads", "anúncios",
-        "Na versão Pro aprofundamos mensagens B2B e anúncios LinkedIn do líder do nicho.",
+        L("Na versão Pro aprofundamos mensagens B2B e anúncios LinkedIn do líder do nicho.", "In Pro we dig into B2B messaging and LinkedIn ads from the niche leader."),
     )
     ig_section = _count_section(
         "instagram_followers", "instagram_url", "Instagram", "seguidores",
-        "Na versão Pro analisamos conteúdo, frequência e o que gera crescimento de seguidores.",
+        L("Na versão Pro analisamos conteúdo, frequência e o que gera crescimento de seguidores.", "In Pro we analyze content, posting cadence, and what drives follower growth."),
         include_with_url=True,
     )
     yt_section = _count_section(
         "youtube_followers", "youtube_url", "YouTube", "inscritos",
-        "Na versão Pro avaliamos autoridade em vídeo e oportunidades de conteúdo no YouTube.",
+        L("Na versão Pro avaliamos autoridade em vídeo e oportunidades de conteúdo no YouTube.", "In Pro we assess video authority and YouTube content opportunities."),
         include_with_url=True,
     )
     tt_section = _count_section(
         "tiktok_followers", "tiktok_url", "TikTok", "seguidores",
-        "Na versão Pro analisamos formatos e o que gera crescimento no TikTok do seu nicho.",
+        L("Na versão Pro analisamos formatos e o que gera crescimento no TikTok do seu nicho.", "In Pro we analyze formats and what drives TikTok growth in your niche."),
         include_with_url=True,
     )
 

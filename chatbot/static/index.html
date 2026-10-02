@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="facebook-domain-verification" content="cty0k7eqhho4hlo8cbtq7v65rl0od4" />
-<title>Radar da Concorrência | Consultor de Marketing</title>
+<title>Winner Tracker | Competitive Marketing Analyst</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- Meta Pixel Code -->
 <script>
@@ -285,7 +285,63 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.64';
+const APP_VERSION = '1.5.70';
+
+/** Locale: winnertracker.com (or ?lang=en) → English / Winner Tracker */
+function detectLocale() {
+  try {
+    const q = new URLSearchParams(location.search).get('lang') || '';
+    if (/^en/i.test(q)) return 'en';
+    if (/^pt/i.test(q)) return 'pt';
+  } catch (e) {}
+  const host = (location.hostname || '').replace(/^www\./i, '').toLowerCase();
+  if (host === 'winnertracker.com' || host.endsWith('.winnertracker.com')) return 'en';
+  return 'pt';
+}
+const LOCALE = detectLocale();
+const IS_EN = LOCALE === 'en';
+const CHECKOUT_ENABLED = !IS_EN;
+const BRAND = IS_EN
+  ? { name: 'Winner Tracker', mark: 'W', tagline: 'Competitive Marketing Analyst', short: 'Winner Tracker' }
+  : { name: 'Radar da Concorrência', mark: 'R', tagline: 'Consultor de Marketing', short: 'Radar' };
+
+const I18N = IS_EN ? {
+  ready: 'Ready',
+  topMeta: 'Ads + SEO + Brand',
+  send: 'Send',
+  placeholder: 'Ex: yourwebsite.com, +15551234567',
+  waTitle: 'Talk to us on WhatsApp',
+  waLabel: 'Contact us',
+  siteNoted: 'Website noted. Now send your **phone with country code** (e.g. `+15551234567`) to unlock the free analysis.',
+  phoneNoted: 'Phone noted. Now send your **website URL** (e.g. `yourwebsite.com`).',
+  needBoth: 'To start, send your **website** and **phone with country code** — same message is fine.\nEx: `yourwebsite.com, +15551234567`',
+  contactCtaTitle: 'Want a deeper analysis?',
+  contactCtaBody: 'Paid Pro checkout is coming soon on Winner Tracker. Meanwhile, talk to us and we will help you go deeper on Ads, SEO, and Brand.',
+  contactCtaBtn: 'Talk to us on WhatsApp',
+  analysisDone: 'Free analysis complete. Review the rankings above — or talk to us for a deeper dive.',
+  heroInvest: 'estimated spend/mo',
+  adsLabel: 'ads',
+  versionPro: 'Pro version',
+  analysisTitle: 'Client vs competitors analysis',
+} : {
+  ready: 'Pronto',
+  topMeta: 'MVP Ads + SEO + Marca',
+  send: 'Enviar',
+  placeholder: 'Ex: seusite.com.br, 11999999999',
+  waTitle: 'Fale Conosco no WhatsApp',
+  waLabel: 'Fale Conosco',
+  siteNoted: 'Site anotado. Agora me envie seu **WhatsApp com DDD** (ex: `11999999999`) para liberar a análise gratuita.',
+  phoneNoted: 'WhatsApp anotado. Agora me envie o **endereço do seu site** (ex: `seusite.com.br`).',
+  needBoth: 'Para começar, envie o **site** e o **WhatsApp com DDD** - pode ser na mesma mensagem.\nEx: `seusite.com.br, 11999999999`',
+  contactCtaTitle: 'Quer ir além?',
+  contactCtaBody: 'Fale conosco para aprofundar Ads, SEO e Marca.',
+  contactCtaBtn: 'Fale Conosco no WhatsApp',
+  analysisDone: 'Análise gratuita concluída.',
+  heroInvest: 'investidos/mes estimado',
+  adsLabel: 'anuncios',
+  versionPro: 'Versão Pro',
+  analysisTitle: 'Analise Cliente vs concorrentes',
+};
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -419,9 +475,9 @@ function trackGtagQualifiedLead(parsed) {
     console.warn('[gtag] generate_lead/conversion/qualify_lead failed', e);
   }
 }
-const BOT_NAME = 'Radar da Concorrência';
+const BOT_NAME = BRAND.name;
 const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
-const OFFER_47 = /^\/47\/?$/.test(location.pathname);
+const OFFER_47 = !IS_EN && /^\/47\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -430,10 +486,26 @@ const topStatus = document.getElementById('topStatus');
 const topMeta = document.getElementById('topMeta');
 const appVersionEl = document.getElementById('appVersion');
 if (appVersionEl) appVersionEl.textContent = 'v' + APP_VERSION;
-document.title = (VIDEO_MODE ? 'Demo vídeo · ' : '') + BOT_NAME + ' v' + APP_VERSION + ' | Consultor de Marketing';
+document.title = (VIDEO_MODE ? (IS_EN ? 'Video demo · ' : 'Demo vídeo · ') : '') + BOT_NAME + ' v' + APP_VERSION + ' | ' + BRAND.tagline;
+(function applyBrandChrome() {
+  const mark = document.querySelector('.top-mark');
+  const name = document.querySelector('.top-name');
+  if (mark) mark.textContent = BRAND.mark;
+  if (name) name.textContent = IS_EN ? BRAND.name : ('Agente ' + BRAND.name);
+  if (topStatus) topStatus.textContent = I18N.ready;
+  if (topMeta) topMeta.textContent = I18N.topMeta;
+  if (input) input.placeholder = I18N.placeholder;
+  if (sendBtn) sendBtn.textContent = I18N.send;
+  const fab = document.querySelector('.wa-fab');
+  if (fab) {
+    fab.title = I18N.waTitle;
+    const lab = fab.querySelector('.wa-fab-label');
+    if (lab) lab.textContent = I18N.waLabel;
+  }
+})();
 if (VIDEO_MODE) {
  document.body.classList.add('video-mode');
- if (topMeta) topMeta.textContent = 'Demo vídeo · Chatguru';
+ if (topMeta) topMeta.textContent = IS_EN ? 'Video demo' : 'Demo vídeo · Chatguru';
 }
 if (OFFER_47) {
  document.body.classList.add('offer-47');
@@ -749,18 +821,18 @@ function resolveFreeGate(text) {
  if (freeGate.siteText && !freeGate.whatsapp) {
   return {
    ready: false,
-   prompt: 'Site anotado. Agora me envie seu **WhatsApp com DDD** (ex: `11999999999`) para liberar a análise gratuita.',
+   prompt: I18N.siteNoted,
   };
  }
  if (!freeGate.siteText && freeGate.whatsapp) {
   return {
    ready: false,
-   prompt: 'WhatsApp anotado. Agora me envie o **endereço do seu site** (ex: `seusite.com.br`).',
+   prompt: I18N.phoneNoted,
   };
  }
  return {
   ready: false,
-  prompt: 'Para começar, envie o **site** e o **WhatsApp com DDD** — pode ser na mesma mensagem.\nEx: `seusite.com.br, 11999999999`',
+  prompt: I18N.needBoth,
  };
 }
 
@@ -913,9 +985,9 @@ function simCell(r) {
  const norm = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
  let cls = '';
  let label = raw;
- if ((r && r.is_client) || norm === 'cliente') { cls = 'badge-client'; label = 'Você'; }
- else if (norm === 'alto') { cls = 'badge-alto'; label = 'Alto'; }
- else if (norm === 'medio') { cls = 'badge-medio'; label = 'Médio'; }
+ if ((r && r.is_client) || norm === 'cliente') { cls = 'badge-client'; label = IS_EN ? 'You' : 'Você'; }
+ else if (norm === 'alto') { cls = 'badge-alto'; label = IS_EN ? 'High' : 'Alto'; }
+ else if (norm === 'medio') { cls = 'badge-medio'; label = IS_EN ? 'Medium' : 'Médio'; }
  if (cls) return `<td><span class="badge ${cls}">${esc(label)}</span></td>`;
  return `<td class="dt-val">${esc(label)}</td>`;
 }
@@ -927,12 +999,12 @@ function companyNameInline(r) {
 }
 
 function simBadgeInline(c) {
- if (c && c.is_client) return '<span class="badge badge-client">Você</span>';
+ if (c && c.is_client) return `<span class="badge badge-client">${IS_EN ? 'You' : 'Você'}</span>`;
  const raw = String((c && c.similaridade) || '').trim();
  if (!raw) return '';
  const norm = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
- if (norm === 'alto') return '<span class="badge badge-alto">Alto</span>';
- if (norm === 'medio') return '<span class="badge badge-medio">Médio</span>';
+ if (norm === 'alto') return `<span class="badge badge-alto">${IS_EN ? 'High' : 'Alto'}</span>`;
+ if (norm === 'medio') return `<span class="badge badge-medio">${IS_EN ? 'Medium' : 'Médio'}</span>`;
  return `<span class="badge">${esc(raw)}</span>`;
 }
 
@@ -940,7 +1012,7 @@ function addBotBubble(text, intro, scrollBlock) {
  const cls = intro ? 'q-bubble intro' : 'q-bubble';
  const where = scrollBlock || (intro ? 'start' : 'end');
  return append(`<div class="q-block reveal">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="${cls}">${mdLite(text)}</div>
  </div>`, where);
 }
@@ -1132,7 +1204,7 @@ function parseLeadMessage(raw) {
 async function openMercadoPagoCheckout(pending) {
  const node = append(`
   <div class="q-block reveal" data-section="checkout">
-   <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+   <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
    <div class="q-bubble">Abrindo o checkout do Mercado Pago (PIX ou cartão)…</div>
    <div class="pay-choice">
     <button type="button" data-pay-open>Abrir pagamento</button>
@@ -1311,7 +1383,7 @@ async function submitPendingContact(rawContact) {
 }
 
 function renderProTeaser(opts) {
- if (VIDEO_MODE || OFFER_47) return; // demo video e /47: sem paywall Pro
+ if (VIDEO_MODE || OFFER_47 || !CHECKOUT_ENABLED) return; // EN / demo /47: sem paywall Pro
  const {
  channel = 'ads',
  questions = PRO_QUESTIONS_ADS,
@@ -1336,7 +1408,7 @@ function renderProTeaser(opts) {
  const price = (window.__proPrice || 99);
  const node = append(`
  <div class="q-block reveal">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">${bubble}</div>
  <div class="answer-card ${cardCls}">
  <div class="pro-head-row">
@@ -1362,14 +1434,27 @@ function renderProTeaser(opts) {
 
 function analysisBlocks(channel, analysisTitle, insight, proHook) {
  const coClass = channel === 'seo' ? 'ci' : (channel === 'brand' ? 'cs' : 'cw');
- const hook = (!VIDEO_MODE && !OFFER_47 && proHook)
-  ? `<div class="co ci co-hook"><div class="co-title">Versão Pro</div><div class="co-body">${esc(proHook)}</div></div>`
+ const hook = (!VIDEO_MODE && !OFFER_47 && CHECKOUT_ENABLED && proHook)
+  ? `<div class="co ci co-hook"><div class="co-title">${esc(I18N.versionPro)}</div><div class="co-body">${esc(proHook)}</div></div>`
   : '';
  return `
- <div class="co ${coClass}"><div class="co-title">${esc(analysisTitle || 'Analise Cliente vs concorrentes')}</div>
+ <div class="co ${coClass}"><div class="co-title">${esc(analysisTitle || I18N.analysisTitle)}</div>
  <div class="co-body">${esc(insight || '')}</div></div>
  ${hook}
  `;
+}
+
+function renderContactCtaEn() {
+ if (!IS_EN) return;
+ const wa = document.querySelector('.wa-fab')?.href || 'https://wa.me/5518997005665';
+ append(`
+ <div class="q-block reveal">
+  <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
+  <div class="q-bubble"><strong>${esc(I18N.contactCtaTitle)}</strong><br>${esc(I18N.contactCtaBody)}</div>
+  <div class="answer-card">
+   <a class="finale-btn" href="${esc(wa)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;text-align:center">${esc(I18N.contactCtaBtn)}</a>
+  </div>
+ </div>`);
 }
 
 function renderExtras47() {
@@ -1377,7 +1462,7 @@ function renderExtras47() {
  const price = 47;
  const node = append(`
  <div class="q-block reveal" data-section="extras-47">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">Os rankings de Ads, SEO e Marca estão acima. Quer abrir também <strong>Meta, Instagram, YouTube e TikTok</strong>?</div>
  <div class="answer-card ac-finale">
  <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Canais extra</div></div>
@@ -1418,7 +1503,7 @@ function renderSavedAnalysisLink() {
  if (!url) return;
  const node = append(`
  <div class="q-block reveal" data-section="analysis-link" data-no-print>
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">Sua análise gratuita ficou salva. Guarde este link para abrir de novo quando quiser.</div>
  <div class="answer-card ac-finale">
  <div class="ac-head"><div class="ac-agent ag-finale">L</div><div class="ac-label lb-finale">Link da análise</div></div>
@@ -1454,6 +1539,11 @@ function renderSavedAnalysisLink() {
 
 function renderProFinale() {
  if (VIDEO_MODE) return; // demo video: canais extra ja liberados, sem checkout
+ if (!CHECKOUT_ENABLED) {
+  addBotBubble(I18N.analysisDone, true);
+  renderContactCtaEn();
+  return;
+ }
  if (OFFER_47) {
   renderSavedAnalysisLink();
   return renderExtras47();
@@ -1461,7 +1551,7 @@ function renderProFinale() {
  const price = (window.__extrasPrice || window.__proPrice || 99);
  const node = append(`
  <div class="q-block reveal">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">O gratuito mostrou Ads, SEO e Marca. Quer abrir os <strong>canais extra</strong>?</div>
  <div class="answer-card ac-finale">
  <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Canais extra</div></div>
@@ -1605,7 +1695,7 @@ function renderPdfExportOffer() {
  const company = analysisCtx.company || analysisCtx.slug || 'seu site';
  const node = append(`
  <div class="q-block reveal" data-section="pdf-export" data-pdf-export>
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">Quer levar este relatório embora?</div>
  <div class="answer-card ac-finale">
  <div class="ac-head"><div class="ac-agent ag-finale">P</div><div class="ac-label lb-finale">Exportar PDF</div></div>
@@ -1652,7 +1742,7 @@ function renderMetaAdsSection(meta, client) {
  const rank = meta.client_rank ? `, voce em ${meta.client_rank}º` : '';
  const node = replaceSection('meta', `
  <div class="q-block reveal" data-section="meta">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">Canais extra 1/4: Quem anuncia mais no Meta?</div>
  <div class="answer-card ac-gads">
  <div class="ac-head"><div class="ac-agent ag-gads">M</div><div class="ac-label lb-gads">Meta Ads Ranking</div></div>
@@ -1688,7 +1778,7 @@ function renderCountChannel(section, title, colorVar, agentLetter, labelCls, age
  const rank = data.client_rank ? `, voce em ${data.client_rank}º` : '';
  append(`
  <div class="q-block reveal">
-  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+  <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
   <div class="q-bubble">${esc(stageLabel)}</div>
   <div class="answer-card ${cardCls}">
    <div class="ac-head"><div class="ac-agent ${agentCls}">${agentLetter}</div><div class="ac-label ${labelCls}">${esc(title)}</div></div>
@@ -1727,7 +1817,7 @@ function renderBriefingCompetitors(payload) {
  const nComp = comps.filter(c => !c.is_client).length;
  replaceSection('briefing', `
  <div class="q-block reveal" data-section="briefing">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">Etapa 1/4: Briefing e concorrentes mapeados</div>
  <div class="answer-card ac-all">
  <div class="ac-head"><div class="ac-agent ag-all">R</div><div class="ac-label lb-all">Briefing Cliente</div></div>
@@ -1752,7 +1842,7 @@ function renderAdsSection(gads, client) {
  const adsRank = gads.client_rank ? `, voce em ${gads.client_rank}º` : '';
  replaceSection('ads', `
  <div class="q-block reveal" data-section="ads">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">Etapa 2/4: Quem esta investindo mais em Google Ads?</div>
  <div class="answer-card ac-gads">
  <div class="ac-head"><div class="ac-agent ag-gads">G</div><div class="ac-label lb-gads">Google Ads Ranking</div></div>
@@ -1787,7 +1877,7 @@ function renderSeoSection(seo, client) {
  const existed = !!document.querySelector('[data-section="seo"]');
  replaceSection('seo', `
  <div class="q-block reveal" data-section="seo">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">Etapa 3/4: Quem esta dominando o SEO organico?</div>
  <div class="answer-card ac-seo">
  <div class="ac-head"><div class="ac-agent ag-seo">S</div><div class="ac-label lb-seo">SEO Organico Ranking</div></div>
@@ -1823,7 +1913,7 @@ function renderBrandSection(brand, client) {
  const brandRank = brand.client_rank ? `, voce em ${brand.client_rank}º` : '';
  replaceSection('brand', `
  <div class="q-block reveal" data-section="brand">
- <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+ <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
  <div class="q-bubble">Etapa 4/4: Qual e a marca mais reconhecida do mercado?</div>
  <div class="answer-card ac-brand">
  <div class="ac-head"><div class="ac-agent ag-brand">B</div><div class="ac-label lb-brand">Popularidade de sua marca</div></div>
@@ -1939,12 +2029,17 @@ function renderReport(report) {
 
 async function boot() {
  try {
- const res = await fetch('/api/hello');
+ const res = await fetch('/api/hello?lang=' + encodeURIComponent(LOCALE));
  const data = await res.json();
  stepDefs = data.steps || [];
+ if (data.brand) {
+  // server brand wins if present
+ }
  if (VIDEO_MODE) {
   addBotBubble(
-   'Modo **demo para vídeo**. Vou carregar o exemplo **Chatguru** (Ads, SEO, Marca) e em seguida os **canais extra**, sem checkout.',
+   IS_EN
+     ? '**Video demo mode**. Loading a sample report (Ads, SEO, Brand) then extra channels, no checkout.'
+     : 'Modo **demo para vídeo**. Vou carregar o exemplo **Chatguru** (Ads, SEO, Marca) e em seguida os **canais extra**, sem checkout.',
    true
   );
   window.__proPrice = data.pro_price || 99;
@@ -1976,11 +2071,12 @@ async function boot() {
  const askNode = addBotBubble(data.ask, true);
  const hint = document.createElement('div');
  hint.className = 'hint';
- hint.innerHTML = 'Exemplo: <code>seusite.com.br, 11999999999</code>';
+ const ex = (data.examples && data.examples[0]) || (IS_EN ? 'yourwebsite.com, +15551234567' : 'seusite.com.br, 11999999999');
+ hint.innerHTML = (IS_EN ? 'Example: ' : 'Exemplo: ') + '<code>' + esc(ex) + '</code>';
  askNode.appendChild(hint);
  }, 450);
  } catch (e) {
- addBotBubble('Nao consegui iniciar. Verifique se o servidor esta rodando.');
+ addBotBubble(IS_EN ? 'Could not start. Check that the server is running.' : 'Nao consegui iniciar. Verifique se o servidor esta rodando.');
  }
 }
 
@@ -2107,7 +2203,7 @@ function showExtraCompetitorsPrompt(jobId, msg) {
  const text = (msg && msg.message) || 'Tem algum concorrente que não apareceu na lista? Informe e vamos adicionar. (Limite de 3 empresas.)';
  const node = append(`
  <div class="q-block reveal" data-extra-comps>
-  <div class="bot-label"><span class="dot"></span>Radar da Concorrência</div>
+  <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
   <div class="q-bubble">${mdLite(text)}</div>
   <div class="pay-form" style="display:flex">
    <input type="text" data-extra-input placeholder="Ex: empresa1.com.br, concorrente2, marca3" />
@@ -2338,6 +2434,7 @@ async function sendMessage() {
   message: (freeGate.siteText || text),
   whatsapp: freeGate.whatsapp || '',
   attribution: getAttribution(),
+  locale: LOCALE,
  };
  const res = await fetch('/api/chat', {
  method: 'POST',

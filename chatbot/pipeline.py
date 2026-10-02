@@ -16,6 +16,7 @@ from report_builder import (
     append_user_competitors,
     build_early_briefing_competitors,
     build_report_from_xlsx,
+    set_report_locale,
 )
 
 try:
@@ -580,7 +581,9 @@ def run_demo_pipeline(
     set_step: EmitFn,
     run_id: Optional[str] = None,
     wait_fn: Optional[Callable[[str, float], dict]] = None,
+    locale: str = "pt",
 ) -> dict:
+    set_report_locale(locale)
     slug = parsed.slug or "chatguru"
     xlsx = find_metricas_xlsx(slug) if slug != "chatguru" else DEMO_XLSX
     if xlsx is None or not xlsx.exists():
@@ -617,7 +620,9 @@ def run_live_pipeline(
     set_step: EmitFn,
     run_id: Optional[str] = None,
     wait_fn: Optional[Callable[[str, float], dict]] = None,
+    locale: str = "pt",
 ) -> dict:
+    set_report_locale(locale)
     import os
 
     required = (
@@ -881,10 +886,12 @@ def run_pipeline(
     set_step: EmitFn,
     run_id: Optional[str] = None,
     wait_fn: Optional[Callable[[str, float], dict]] = None,
+    locale: str = "pt",
 ) -> dict:
+    set_report_locale(locale)
     if parsed.demo:
-        return run_demo_pipeline(parsed, emit, set_step, run_id=run_id, wait_fn=wait_fn)
-    return run_live_pipeline(parsed, emit, set_step, run_id=run_id, wait_fn=wait_fn)
+        return run_demo_pipeline(parsed, emit, set_step, run_id=run_id, wait_fn=wait_fn, locale=locale)
+    return run_live_pipeline(parsed, emit, set_step, run_id=run_id, wait_fn=wait_fn, locale=locale)
 
 
 def run_extras_pipeline(
@@ -896,8 +903,10 @@ def run_extras_pipeline(
     demo: bool = False,
     preferred_competitors: Optional[list[str]] = None,
     run_id: Optional[str] = None,
+    locale: str = "pt",
 ) -> dict:
     """Canais extra: Meta → LinkedIn → Instagram → YouTube (sem TikTok)."""
+    set_report_locale(locale)
     slug = slug or "chatguru"
     client_name = company or slug
     mode = "demo" if demo else "live"
