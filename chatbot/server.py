@@ -42,6 +42,8 @@ from mercadopago_client import (
     mp_public_key,
 )
 from meta_capi import capi_configured, send_capi_event
+from openai_capi import configured as openai_capi_configured
+from openai_capi import send_event as send_openai_event
 from attribution import classify_traffic_source, normalize_attribution
 from report_html import load_saved_report, render_report_html, report_has_channel_sections
 import usage_db
@@ -70,7 +72,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.62"
+APP_VERSION = "1.5.63"
 
 try:
     usage_db.init_db()
@@ -333,6 +335,7 @@ def hello():
         "keys_ready": keys,
         "payments_ready": mp_configured(),
         "meta_capi_ready": capi_configured(),
+        "openai_capi_ready": openai_capi_configured(),
         "pro_price": PRO_PRICE,
         "extras_price": EXTRAS_PRICE,
         "version": APP_VERSION,
@@ -366,6 +369,33 @@ def meta_capi_event():
         test_event_code=str(data.get("test_event_code") or "").strip(),
         email=str(data.get("email") or "").strip(),
         phone=str(data.get("phone") or "").strip(),
+    )
+    status = 200 if result.get("ok") or result.get("skipped") else 502
+    return jsonify(result), status
+
+
+@app.post("/api/openai/event")
+def openai_capi_event():
+    """Relay de page_viewed, lead_created, checkout_started e order_created."""
+    data = request.get_json(silent=True) or {}
+    event_type = str(data.get("event_type") or data.get("type") or "").strip()
+    payload = data.get("data")
+    if payload is not None and not isinstance(payload, dict):
+        payload = {}
+    client_ip = (
+        (request.headers.get("CF-Connecting-IP") or "").strip()
+        or (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        or (request.remote_addr or "")
+    )
+    result = send_openai_event(
+        event_type,
+        event_id=str(data.get("event_id") or "").strip(),
+        source_url=str(data.get("event_source_url") or request.referrer or "")[:2048],
+        data=payload if isinstance(payload, dict) else {},
+        email=str(data.get("email") or "").strip(),
+        phone=str(data.get("phone") or "").strip(),
+        client_ip=client_ip,
+        user_agent=(request.headers.get("User-Agent") or "")[:512],
     )
     status = 200 if result.get("ok") or result.get("skipped") else 502
     return jsonify(result), status

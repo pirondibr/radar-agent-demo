@@ -26,7 +26,13 @@ fbq('track', 'PageView');
   var path = location.pathname.replace(/\/+$/, '') || '/';
   if (path !== '/' && path !== '/47') return;
   !function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");
+  var pageEventId = 'pv_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  window.__oaiPageEventId = pageEventId;
   oaiq("init",{pixelId:"LpS3eYX3NmAuftchn5HVwA",debug:true});
+  oaiq("measure", "page_viewed", {
+    type: "contents",
+    contents: [{ name: document.title || "Agente Radar da Concorrencia", content_type: "page" }]
+  }, { event_id: pageEventId });
 })();
 </script>
 <!-- Google tag (gtag.js) — GA4 + Google Ads -->
@@ -279,7 +285,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.62';
+const APP_VERSION = '1.5.63';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
@@ -354,6 +360,17 @@ function trackGtagPurchase(data) {
       quantity: 1,
     }],
   };
+  trackOpenAI('order_created', {
+    type: 'contents',
+    amount: Number.isFinite(value) ? Math.round(value * 100) : 0,
+    currency: currency,
+    contents: [{
+      id: product,
+      name: itemName,
+      content_type: 'product',
+      quantity: 1,
+    }],
+  }, 'purchase_' + orderId);
   try {
     gtag('event', 'purchase', payload);
     // Google Ads: "Converted lead" (close_convert_lead)
@@ -440,6 +457,69 @@ function metaTestEventCode() {
  }
 }
 
+function openaiMinor(value) {
+ const n = Number(value);
+ if (!Number.isFinite(n)) return null;
+ return Math.round(n * 100);
+}
+
+/** OpenAI Ads: page_viewed, lead_created, checkout_started, order_created. */
+function trackOpenAI(eventType, data, eventId, user) {
+ if (typeof oaiq !== 'function') return;
+ const payload = data || { type: 'customer_action' };
+ const opts = eventId ? { event_id: eventId } : undefined;
+ const fire = () => {
+  try {
+   oaiq('measure', eventType, payload, opts);
+   return true;
+  } catch (e) {
+   return false;
+  }
+ };
+ if (!fire()) {
+  let tries = 0;
+  const timer = setInterval(() => {
+   tries += 1;
+   if (fire() || tries >= 20) clearInterval(timer);
+  }, 250);
+ }
+ const contact = user || {};
+ try {
+  fetch('/api/openai/event', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({
+    event_type: eventType,
+    event_id: eventId || '',
+    data: payload,
+    email: contact.email || '',
+    phone: contact.phone || '',
+    event_source_url: location.href,
+   }),
+   keepalive: true,
+  }).catch(() => {});
+ } catch (e) {}
+}
+
+if (window.__oaiPageEventId) {
+ try {
+  fetch('/api/openai/event', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({
+    event_type: 'page_viewed',
+    event_id: window.__oaiPageEventId,
+    data: {
+     type: 'contents',
+     contents: [{ name: document.title || 'Agente Radar da Concorrencia', content_type: 'page' }],
+    },
+    event_source_url: location.href,
+   }),
+   keepalive: true,
+  }).catch(() => {});
+ } catch (e) {}
+}
+
 /** Meta Pixel + CAPI — https://www.facebook.com/business/help/402791146561655 */
 function trackMeta(eventName, params, user) {
  if (VIDEO_MODE) return;
@@ -447,6 +527,25 @@ function trackMeta(eventName, params, user) {
  const contact = user || {};
  const eventId = metaEventId();
  const testCode = metaTestEventCode();
+ if (eventName === 'Lead') {
+  trackOpenAI('lead_created', { type: 'customer_action' }, eventId, contact);
+ } else if (eventName === 'InitiateCheckout') {
+  const minor = openaiMinor(payload.value);
+  const checkout = {
+   type: 'contents',
+   contents: [{
+    id: (payload.content_ids && payload.content_ids[0]) || 'checkout',
+    name: payload.content_name || 'Checkout',
+    content_type: 'product',
+    quantity: 1,
+   }],
+  };
+  if (minor != null) {
+   checkout.amount = minor;
+   checkout.currency = payload.currency || 'BRL';
+  }
+  trackOpenAI('checkout_started', checkout, eventId, contact);
+ }
 
  const fireBrowser = () => {
   try {

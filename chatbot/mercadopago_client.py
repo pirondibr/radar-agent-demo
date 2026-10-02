@@ -304,6 +304,50 @@ def apply_payment_to_order(payment: dict[str, Any]) -> Optional[dict[str, Any]]:
         except Exception as e:
             print(f"[meta_capi] Purchase falhou order={order_id}: {e}", flush=True)
 
+    if newly_paid and not order.get("openai_purchase_sent"):
+        try:
+            from openai_capi import send_event as send_openai_event
+
+            amount = float(order.get("amount") or 0)
+            product = str(order.get("product") or "deep_channel")
+            channel = str(order.get("channel") or "")
+            content_name = (
+                "Radar Canais Extra"
+                if product == "extras_pack"
+                else f"Radar Pro — {channel}" if channel else "Radar Pro"
+            )
+            base = os.environ.get("PUBLIC_BASE_URL", "").strip().rstrip("/") or "https://agente.radardaconcorrencia.com.br"
+            funnel = str((order.get("attribution") or {}).get("funnel") or order.get("funnel") or "")
+            source = f"{base}/47" if funnel == "radar_47" else f"{base}/"
+            result = send_openai_event(
+                "order_created",
+                event_id=f"purchase_{order_id}",
+                source_url=source,
+                data={
+                    "type": "contents",
+                    "amount": int(round(amount * 100)),
+                    "currency": str(order.get("currency") or "BRL"),
+                    "contents": [{
+                        "id": product,
+                        "name": content_name,
+                        "content_type": "product",
+                        "quantity": 1,
+                    }],
+                },
+            )
+            order["openai_purchase_sent"] = bool(result.get("ok") or result.get("skipped"))
+            order["openai_purchase"] = {
+                "ok": result.get("ok"),
+                "skipped": result.get("skipped"),
+                "event_id": result.get("event_id"),
+                "reason": result.get("reason"),
+                "error": result.get("error"),
+            }
+            save_order(order)
+            print(f"[openai_capi] order_created order={order_id} result={order['openai_purchase']}", flush=True)
+        except Exception as e:
+            print(f"[openai_capi] order_created falhou order={order_id}: {e}", flush=True)
+
     return order
 
 
