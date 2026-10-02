@@ -20,14 +20,15 @@ fbq('init', '2289325455219613');
 fbq('track', 'PageView');
 </script>
 <!-- End Meta Pixel Code -->
-<!-- Google tag (gtag.js) -->
+<!-- Google tag (gtag.js) — GA4 + Google Ads -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-9JFVQ7LWR8"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
   gtag('config', 'G-9JFVQ7LWR8');
-  // Qualificado: qualify_lead (envio do site). Convertido: close_convert_lead + purchase (pagamento).
+  gtag('config', 'AW-18480670862');
+  // Lead form: generate_lead (GA4) + conversion Ads. Qualificado (legado): qualify_lead. Convertido: close_convert_lead + purchase.
 </script>
 <!-- Microsoft Clarity -->
 <script type="text/javascript">
@@ -358,27 +359,43 @@ function trackGtagPurchase(data) {
   }
 }
 
-/** Google Ads "Qualified lead": pessoa enviou site (+ WhatsApp) e a analise comecou. */
+/**
+ * Lead do relatório gratuito: site (+ WhatsApp) e análise começou.
+ * Dispara generate_lead (GA4), conversion Ads (WEBPAGE) e qualify_lead (legado).
+ */
 function trackGtagQualifiedLead(parsed) {
   if (typeof gtag !== 'function') return;
   const p = parsed || {};
-  const key = String(p.job_id || p.slug || p.company || '').trim();
+  const key = String(p.job_id || p.slug || p.company || p.contact || '').trim();
   if (!key) return;
   if (!window.__gtagQualifiedLeads) window.__gtagQualifiedLeads = new Set();
   if (window.__gtagQualifiedLeads.has(key)) return;
   window.__gtagQualifiedLeads.add(key);
-  const payload = {
+  const leadSource = (/^\/47\/?$/.test(location.pathname) ? 'radar_47' : 'radar_analysis');
+  const base = {
     currency: 'BRL',
     value: 0,
-    lead_status: 'qualified',
-    lead_source: (/^\/47\/?$/.test(location.pathname) ? 'radar_47' : 'radar_analysis'),
+    lead_source: leadSource,
     company: p.company || '',
     slug: p.slug || '',
   };
   try {
-    gtag('event', 'qualify_lead', payload);
+    // GA4 key event (importado / HIDDEN no Ads — mantém funil analytics)
+    gtag('event', 'generate_lead', Object.assign({}, base, {
+      lead_status: 'submitted',
+    }));
+    // Conversão Google Ads visível (WEBPAGE) — conta na coluna Conversões
+    gtag('event', 'conversion', {
+      send_to: 'AW-18480670862/uhToCMPS240dEI7RouxE',
+      value: 0.0,
+      currency: 'BRL',
+    });
+    // Mantém qualify_lead para histórico / funil GA4 (secundária no Ads)
+    gtag('event', 'qualify_lead', Object.assign({}, base, {
+      lead_status: 'qualified',
+    }));
   } catch (e) {
-    console.warn('[gtag] qualify_lead failed', e);
+    console.warn('[gtag] generate_lead/conversion/qualify_lead failed', e);
   }
 }
 const BOT_NAME = 'Radar da Concorrência';
@@ -531,6 +548,12 @@ async function captureOffer47Whatsapp(phone, opts) {
    content_category: 'radar_47',
    content_ids: [analysisCtx.slug || analysisCtx.company || 'site'],
   }, { phone: digits });
+  trackGtagQualifiedLead({
+   job_id: analysisCtx.job_id || '',
+   company: analysisCtx.company || '',
+   slug: analysisCtx.slug || '',
+   contact: digits,
+  });
  }
  if (!openPay) {
   addBotBubble('WhatsApp registrado. Sigo com a análise do site.');
