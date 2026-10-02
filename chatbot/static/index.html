@@ -296,11 +296,13 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.94';
+const APP_VERSION = '1.5.95';
 
-/** Locale: winnertracker.com (or ?lang=en) → English / Winner Tracker */
+/** Locale: winnertracker.com (or ?lang=en) → English / Winner Tracker.
+ *  /demo is always Brazilian PT showcase. */
 function detectLocale() {
   try {
+    if (/^\/demo\/?$/i.test(location.pathname || '')) return 'pt';
     const q = new URLSearchParams(location.search).get('lang') || '';
     if (/^en/i.test(q)) return 'en';
     if (/^pt/i.test(q)) return 'pt';
@@ -514,8 +516,10 @@ function trackGtagQualifiedLead(parsed) {
   }
 }
 const BOT_NAME = BRAND.name;
-const VIDEO_MODE = /^\/video\/?$/.test(location.pathname);
-const OFFER_47 = !IS_EN && /^\/47\/?$/.test(location.pathname);
+const PATH_DEMO = /^\/demo\/?$/i.test(location.pathname);
+const PATH_VIDEO = /^\/video\/?$/i.test(location.pathname);
+const VIDEO_MODE = PATH_DEMO || PATH_VIDEO; // autoplay Chatguru + extras, sem paywall
+const OFFER_47 = !IS_EN && !VIDEO_MODE && /^\/47\/?$/.test(location.pathname);
 const META_PIXEL_ID = '2289325455219613';
 const thread = document.getElementById('thread');
 const input = document.getElementById('msgInput');
@@ -524,7 +528,9 @@ const topStatus = document.getElementById('topStatus');
 const topMeta = document.getElementById('topMeta');
 const appVersionEl = document.getElementById('appVersion');
 if (appVersionEl) appVersionEl.textContent = 'v' + APP_VERSION;
-document.title = (VIDEO_MODE ? (IS_EN ? 'Video demo · ' : 'Demo vídeo · ') : '') + BOT_NAME + ' v' + APP_VERSION + ' | ' + BRAND.tagline;
+document.title = (PATH_DEMO
+  ? 'Demo · Chatguru · '
+  : (VIDEO_MODE ? (IS_EN ? 'Video demo · ' : 'Demo vídeo · ') : '')) + BOT_NAME + ' v' + APP_VERSION + ' | ' + BRAND.tagline;
 (function applyBrandChrome() {
   const mark = document.querySelector('.top-mark');
   const name = document.querySelector('.top-name');
@@ -553,7 +559,8 @@ document.title = (VIDEO_MODE ? (IS_EN ? 'Video demo · ' : 'Demo vídeo · ') : 
 })();
 if (VIDEO_MODE) {
  document.body.classList.add('video-mode');
- if (topMeta) topMeta.textContent = IS_EN ? 'Video demo' : 'Demo vídeo · Chatguru';
+ if (PATH_DEMO) document.body.classList.add('showcase-demo');
+ if (topMeta) topMeta.textContent = PATH_DEMO ? 'Demo · Chatguru completo' : (IS_EN ? 'Video demo' : 'Demo vídeo · Chatguru');
 }
 if (OFFER_47) {
  document.body.classList.add('offer-47');
@@ -2356,13 +2363,34 @@ async function boot() {
   initPaddleClient(data.paddle);
  }
  if (VIDEO_MODE) {
-  addBotBubble(
-   IS_EN
-     ? '**Video demo mode**. Loading a sample report (Ads, SEO, Brand) then extra channels, no checkout.'
-     : 'Modo **demo para vídeo**. Vou carregar o exemplo **Chatguru** (Ads, SEO, Marca) e em seguida os **canais extra**, sem checkout.',
-   true
-  );
-  setTimeout(() => startVideoDemo(), 900);
+  if (PATH_DEMO) {
+   // Showcase BR: conversa inicial realista + Chatguru completo (para criativos/IA)
+   addBotBubble(
+    data.greeting
+      || 'Olá! Eu sou o **Radar da Concorrência**. Posso mostrar quais estratégias de marketing seus concorrentes estão usando.',
+    true
+   );
+   setTimeout(() => {
+    const askNode = addBotBubble(
+     data.ask
+       || 'Para começar, envie o **site** e o **WhatsApp com DDD** — pode ser na mesma mensagem.',
+     true
+    );
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.innerHTML = 'Exemplo: <code>seusite.com.br, 11999999999</code>';
+    askNode.appendChild(hint);
+    setTimeout(() => { startShowcaseDemo(); }, 1100);
+   }, 650);
+  } else {
+   addBotBubble(
+    IS_EN
+      ? '**Video demo mode**. Loading a sample report (Ads, SEO, Brand) then extra channels, no checkout.'
+      : 'Modo **demo para vídeo**. Vou carregar o exemplo **Chatguru** (Ads, SEO, Marca) e em seguida os **canais extra**, sem checkout.',
+    true
+   );
+   setTimeout(() => startVideoDemo(), 900);
+  }
   return;
  }
  if (OFFER_47) {
@@ -2395,14 +2423,36 @@ async function boot() {
  }
 }
 
-async function startVideoDemo() {
+function sleepMs(ms) {
+ return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function startShowcaseDemo() {
+ // Simula lead BR enviando site + WhatsApp, depois carrega Chatguru + extras
+ addUserBubble('chatguru.com.br, 11999887766');
+ await sleepMs(850);
+ await startVideoDemo({
+  skipUserBubble: true,
+  metaLabel: 'Demo · Chatguru completo',
+  ackOverride:
+   'Perfeito. Vou analisar **Chatguru** e encontrar seus concorrentes. '
+   + '(tempo estimado cerca de 5 min — nesta demo os relatórios carregam em segundos).',
+ });
+}
+
+async function startVideoDemo(opts) {
+ opts = opts || {};
  if (busy) return;
  setBusy(true);
  try {
   const res = await fetch('/api/chat', {
    method: 'POST',
    headers: { 'Content-Type': 'application/json' },
-   body: JSON.stringify({ message: 'demo chatguru', attribution: getAttribution() }),
+   body: JSON.stringify({
+    message: 'demo chatguru',
+    lang: 'pt',
+    attribution: Object.assign({}, getAttribution(), { funnel: PATH_DEMO ? 'radar_demo' : 'radar_video' }),
+   }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -2419,9 +2469,13 @@ async function startVideoDemo() {
    job_id: jobId,
    demo: true,
   };
-  topMeta.textContent = 'Demo vídeo · Chatguru';
-  addUserBubble('chatguru.com.br');
-  addBotBubble(data.ack || 'Carregando o exemplo Chatguru...');
+  topMeta.textContent = opts.metaLabel || (PATH_DEMO ? 'Demo · Chatguru completo' : 'Demo vídeo · Chatguru');
+  if (!opts.skipUserBubble) addUserBubble('chatguru.com.br');
+  addBotBubble(
+   opts.ackOverride
+     || data.ack
+     || 'Carregando o exemplo Chatguru...'
+  );
   const first = stepDefs[0] || {};
   const etaSec = first.eta_demo || 10;
   const etaGuess = etaSec >= 60 ? ('~' + Math.round(etaSec / 60) + ' min') : ('~' + etaSec + 's');
@@ -2673,7 +2727,12 @@ function listenJobEvents(jobId, isExtras) {
     renderReport(msg.report);
    }
    if (msg.extras || isExtras) {
-    if (VIDEO_MODE) {
+    if (PATH_DEMO) {
+     addBotBubble(
+      'Demo completa do **Chatguru**: Ads, SEO, Marca e canais extra (**Meta, Instagram, YouTube e TikTok**). '
+      + 'Use esta página como referência visual do produto Radar da Concorrência.'
+     );
+    } else if (VIDEO_MODE) {
      addBotBubble('Demonstração concluída: Ads, SEO, Marca e canais extra (Meta, Instagram, YouTube e TikTok) com o exemplo **Chatguru**.');
     } else if (OFFER_47) {
      addBotBubble('Canais extra concluídos: Meta, Instagram, YouTube e TikTok.');
@@ -2686,7 +2745,11 @@ function listenJobEvents(jobId, isExtras) {
     return;
    }
    if (VIDEO_MODE) {
-    addBotBubble('Etapas principais prontas. Agora liberando os **canais extra** (Meta, Instagram, YouTube, TikTok)...');
+    addBotBubble(
+     PATH_DEMO
+       ? 'Etapas principais prontas (Ads, SEO e Marca). Agora liberando os **canais extra**…'
+       : 'Etapas principais prontas. Agora liberando os **canais extra** (Meta, Instagram, YouTube, TikTok)...'
+    );
     es.close();
     setBusy(false);
     setTimeout(() => { startExtrasJob(); }, 700);

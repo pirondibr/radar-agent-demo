@@ -88,7 +88,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.94"
+APP_VERSION = "1.5.95"
 
 try:
     usage_db.init_db()
@@ -311,6 +311,15 @@ def index():
 @app.get("/video")
 def video_demo():
     """Demo gravavel: Chatguru + canais extra, sem paywalls Pro."""
+    resp = send_from_directory(STATIC_DIR, "index.html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.get("/demo")
+def showcase_demo():
+    """Demo BR autoplay: Chatguru completo (Ads/SEO/Marca + extras) para criativos/anuncios."""
     resp = send_from_directory(STATIC_DIR, "index.html")
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
