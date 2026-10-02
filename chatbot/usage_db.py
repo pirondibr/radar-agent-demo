@@ -8,6 +8,7 @@ import os
 import sqlite3
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -18,8 +19,61 @@ DATA_DIR = Path(
 DB_PATH = DATA_DIR / "usage.sqlite"
 RUNS_DIR = DATA_DIR / "runs"
 
+# Exemplos / demos que nao devem poluir o dashboard admin
+HIDDEN_SAMPLE_SLUGS = frozenset({"chatguru", "texascenter"})
+HIDDEN_SAMPLE_NEEDLES = ("chatguru", "texascenter")
+_BR_TZ = timezone(timedelta(hours=-3))
+
 _lock = threading.Lock()
 _initialized = False
+
+
+def is_hidden_sample(row: Optional[dict[str, Any]]) -> bool:
+    """True para demos e exemplos (chatguru, texascenter) ocultos no admin."""
+    if not row:
+        return False
+    try:
+        if int(row.get("demo") or 0):
+            return True
+    except Exception:
+        pass
+    if str(row.get("mode") or "").strip().lower() == "demo":
+        return True
+    slug = str(row.get("slug") or "").strip().lower()
+    company = str(row.get("company") or "").strip().lower()
+    url = str(row.get("url") or "").strip().lower()
+    if slug in HIDDEN_SAMPLE_SLUGS:
+        return True
+    for needle in HIDDEN_SAMPLE_NEEDLES:
+        if needle in slug or needle in company or needle in url:
+            return True
+    return False
+
+
+def _day_bounds_br(date_str: str) -> Optional[tuple[float, float]]:
+    """Retorna (start_ts, end_ts) para YYYY-MM-DD no fuso America/Sao_Paulo (-3)."""
+    raw = (date_str or "").strip()
+    if not raw:
+        return None
+    try:
+        day = datetime.strptime(raw[:10], "%Y-%m-%d").replace(tzinfo=_BR_TZ)
+    except ValueError:
+        return None
+    start = day.timestamp()
+    end = (day + timedelta(days=1)).timestamp()
+    return start, end
+
+
+def _match_traffic_source(traffic_source: Any, source_filter: str) -> bool:
+    src = (source_filter or "").strip().lower()
+    if not src or src in ("all", "todos", "*"):
+        return True
+    ts = str(traffic_source or "").strip().lower()
+    if src in ("meta", "facebook", "instagram"):
+        return "meta" in ts
+    if src in ("google", "google ads", "gads", "ads"):
+        return "google" in ts
+    return src in ts
 
 
 def _connect() -> sqlite3.Connection:
@@ -532,12 +586,24 @@ def save_json_artifact(
     return dest
 
 
-def list_runs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+def list_runs(
+    limit: int = 50,
+    offset: int = 0,
+    *,
+    date: Optional[str] = None,
+    source: Optional[str] = None,
+    exclude_samples: bool = True,
+) -> list[dict[str, Any]]:
     try:
         sweep_stale_runs()
     except Exception:
         pass
     init_db()
+    day = _day_bounds_br(date or "")
+    source_f = (source or "").strip()
+    needs_filter = bool(exclude_samples or day or source_f)
+    # Busca folga para compensar exclusao de demos / filtros
+    fetch_limit = min(max(limit + offset, 1) * (8 if needs_filter else 1) + 50, 2000)
     with _lock:
         conn = _connect()
         try:
@@ -545,11 +611,29 @@ def list_runs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
                 """
                 SELECT * FROM runs
                 ORDER BY COALESCE(started_at, 0) DESC
-                LIMIT ? OFFSET ?
+                LIMIT ?
                 """,
-                (limit, offset),
+                (fetch_limit,),
             ).fetchall()
-            return [dict(r) for r in rows]
+            out: list[dict[str, Any]] = []
+            skipped = 0
+            for row in rows:
+                r = dict(row)
+                if exclude_samples and is_hidden_sample(r):
+                    continue
+                if day:
+                    ts = float(r.get("started_at") or 0)
+                    if ts < day[0] or ts >= day[1]:
+                        continue
+                if not _match_traffic_source(r.get("traffic_source"), source_f):
+                    continue
+                if skipped < offset:
+                    skipped += 1
+                    continue
+                out.append(r)
+                if len(out) >= limit:
+                    break
+            return out
         finally:
             conn.close()
 
@@ -784,8 +868,17 @@ def save_lead(lead: dict[str, Any]) -> None:
             conn.close()
 
 
-def list_leads(limit: int = 100) -> list[dict[str, Any]]:
+def list_leads(
+    limit: int = 100,
+    *,
+    date: Optional[str] = None,
+    source: Optional[str] = None,
+    exclude_samples: bool = True,
+) -> list[dict[str, Any]]:
     init_db()
+    day = _day_bounds_br(date or "")
+    source_f = (source or "").strip()
+    fetch_limit = min(max(limit, 1) * 5 + 50, 2000)
     with _lock:
         conn = _connect()
         try:
@@ -810,8 +903,36 @@ def list_leads(limit: int = 100) -> list[dict[str, Any]]:
             )
             rows = conn.execute(
                 "SELECT * FROM leads ORDER BY ts DESC LIMIT ?",
-                (limit,),
+                (fetch_limit,),
             ).fetchall()
-            return [dict(r) for r in rows]
+            out: list[dict[str, Any]] = []
+            for row in rows:
+                r = dict(row)
+                if exclude_samples and is_hidden_sample(r):
+                    continue
+                if day:
+                    ts = float(r.get("ts") or 0)
+                    if ts < day[0] or ts >= day[1]:
+                        continue
+                traffic = r.get("traffic_source") or ""
+                if source_f and not traffic:
+                    jid = str(r.get("job_id") or "").strip()
+                    if jid:
+                        run_row = conn.execute(
+                            "SELECT traffic_source, company, slug, url, demo, mode FROM runs WHERE id = ?",
+                            (jid,),
+                        ).fetchone()
+                        if run_row:
+                            rd = dict(run_row)
+                            traffic = rd.get("traffic_source") or ""
+                            r["traffic_source"] = traffic
+                            if exclude_samples and is_hidden_sample({**r, **rd}):
+                                continue
+                if not _match_traffic_source(traffic, source_f):
+                    continue
+                out.append(r)
+                if len(out) >= limit:
+                    break
+            return out
         finally:
             conn.close()

@@ -70,7 +70,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.59"
+APP_VERSION = "1.5.60"
 
 try:
     usage_db.init_db()
@@ -1410,9 +1410,17 @@ def offer_47_analysis(run_id: str):
 def admin_list_runs():
     if not _admin_authorized():
         return jsonify({"error": "unauthorized"}), 403
-    limit = min(int(request.args.get("limit") or 50), 200)
+    limit = min(int(request.args.get("limit") or 80), 200)
     offset = max(int(request.args.get("offset") or 0), 0)
-    runs = usage_db.list_runs(limit=limit, offset=offset)
+    date = (request.args.get("date") or "").strip() or None
+    source = (request.args.get("source") or "").strip() or None
+    runs = usage_db.list_runs(
+        limit=limit,
+        offset=offset,
+        date=date,
+        source=source,
+        exclude_samples=True,
+    )
     for r in runs:
         try:
             summary = usage_db.parse_run_summary(r)
@@ -1427,7 +1435,14 @@ def admin_list_leads():
     if not _admin_authorized():
         return jsonify({"error": "unauthorized"}), 403
     limit = min(int(request.args.get("limit") or 80), 200)
-    leads = usage_db.list_leads(limit=limit)
+    date = (request.args.get("date") or "").strip() or None
+    source = (request.args.get("source") or "").strip() or None
+    leads = usage_db.list_leads(
+        limit=limit,
+        date=date,
+        source=source,
+        exclude_samples=True,
+    )
     for lead in leads:
         jid = (lead.get("job_id") or "").strip()
         if not jid:

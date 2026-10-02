@@ -58,6 +58,10 @@ th{color:var(--muted);font-weight:600}
 .log-error{color:var(--err)}.log-warn{color:var(--warn)}
 .arts a{color:#a5b4fc;margin-right:10px}
 .errbox{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.35);color:#fecaca;padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px}
+.filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.filters label{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.filters input[type=date],.filters select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 8px;font-size:12px;font-family:var(--mono)}
+.filters input[type=date]:focus,.filters select:focus{outline:none;border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -65,6 +69,18 @@ th{color:var(--muted);font-weight:600}
   <h1>Radar Admin — Usos & Logs</h1>
   <button type="button" id="btnRefresh">Atualizar</button>
   <button type="button" id="btnLeads">Leads / WhatsApp</button>
+  <div class="filters">
+    <label>Data
+      <input type="date" id="filterDate" title="Filtrar por dia (fuso BR). Vazio = todos">
+    </label>
+    <label>Canal
+      <select id="filterChannel" title="Filtrar por origem de tráfego">
+        <option value="">Todos</option>
+        <option value="meta">Meta</option>
+        <option value="google">Google Ads</option>
+      </select>
+    </label>
+  </div>
   <div class="meta" id="hdrMeta">carregando…</div>
 </header>
 <div class="layout">
@@ -131,18 +147,42 @@ function metricNum(raw) {
 
 let selectedId = null;
 
+function filterQuery() {
+  const date = (document.getElementById('filterDate')?.value || '').trim();
+  const source = (document.getElementById('filterChannel')?.value || '').trim();
+  const parts = [];
+  if (date) parts.push('date=' + encodeURIComponent(date));
+  if (source) parts.push('source=' + encodeURIComponent(source));
+  return parts.length ? ('&' + parts.join('&')) : '';
+}
+function filterLabel() {
+  const date = (document.getElementById('filterDate')?.value || '').trim();
+  const source = (document.getElementById('filterChannel')?.value || '').trim();
+  const bits = [];
+  if (date) {
+    const [y, m, d] = date.split('-');
+    bits.push(d && m && y ? `${d}/${m}/${y}` : date);
+  } else {
+    bits.push('todos os dias');
+  }
+  if (source === 'meta') bits.push('Meta');
+  else if (source === 'google') bits.push('Google Ads');
+  else bits.push('todos os canais');
+  return bits.join(' · ');
+}
+
 async function loadRuns() {
-  const res = await api('/api/admin/runs?limit=80');
+  const res = await api('/api/admin/runs?limit=120' + filterQuery());
   if (!res.ok) {
     document.getElementById('runList').innerHTML = `<div class="empty">Erro ${res.status}. Use /admin?token=...</div>`;
     return;
   }
   const data = await res.json();
   const runs = data.runs || [];
-  document.getElementById('hdrMeta').textContent = runs.length + ' usos recentes';
+  document.getElementById('hdrMeta').textContent = runs.length + ' usos · ' + filterLabel();
   const el = document.getElementById('runList');
   if (!runs.length) {
-    el.innerHTML = '<div class="empty">Nenhum uso registrado ainda</div>';
+    el.innerHTML = '<div class="empty">Nenhum uso com esses filtros</div>';
     return;
   }
   el.innerHTML = runs.map(r => {
@@ -389,6 +429,8 @@ async function clearCache(run) {
 
 document.getElementById('btnRefresh').addEventListener('click', loadRuns);
 document.getElementById('btnLeads').addEventListener('click', loadLeads);
+document.getElementById('filterDate').addEventListener('change', () => { loadRuns(); });
+document.getElementById('filterChannel').addEventListener('change', () => { loadRuns(); });
 loadRuns();
 setInterval(loadRuns, 15000);
 
@@ -396,17 +438,17 @@ async function loadLeads() {
   selectedId = null;
   const detail = document.getElementById('detail');
   detail.innerHTML = '<div class="empty">Carregando leads…</div>';
-  const res = await api('/api/admin/leads?limit=100');
+  const res = await api('/api/admin/leads?limit=120' + filterQuery());
   if (!res.ok) {
     detail.innerHTML = `<div class="empty">Erro ${res.status} ao carregar leads</div>`;
     return;
   }
   const data = await res.json();
   const leads = data.leads || [];
-  document.getElementById('hdrMeta').textContent = leads.length + ' leads';
+  document.getElementById('hdrMeta').textContent = leads.length + ' leads · ' + filterLabel();
   detail.innerHTML = `
     <h2>Leads / WhatsApp</h2>
-    <div class="sub">Contatos capturados na análise gratuita e no Pro</div>
+    <div class="sub">Contatos capturados · ${esc(filterLabel())}</div>
     <section>
       <table>
         <thead>
@@ -434,7 +476,7 @@ async function loadLeads() {
               <td>${esc(l.client_ads_fmt || '—')}${l.client_ads_rank ? ` (${esc(String(l.client_ads_rank))}º)` : ''}</td>
               <td>${esc(l.status || '—')}${l.paid ? ' · pago' : ''}</td>
               <td class="mono" style="font-family:var(--mono);font-size:11px">${esc(l.job_id || '—')}</td>
-            </tr>`).join('') || '<tr><td colspan="9">Nenhum lead ainda</td></tr>'}
+            </tr>`).join('') || '<tr><td colspan="9">Nenhum lead com esses filtros</td></tr>'}
         </tbody>
       </table>
     </section>
