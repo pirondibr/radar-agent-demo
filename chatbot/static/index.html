@@ -286,7 +286,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.91';
+const APP_VERSION = '1.5.92';
 
 /** Locale: winnertracker.com (or ?lang=en) → English / Winner Tracker */
 function detectLocale() {
@@ -1193,6 +1193,12 @@ function initPaddleClient(cfg) {
      if (oid && typeof window.__onPaddlePaid === 'function') {
       window.__onPaddlePaid(oid);
      }
+     // Fecha o overlay após breve sucesso — volta ao chat sem reload
+     try {
+      setTimeout(() => {
+       try { if (typeof Paddle !== 'undefined' && Paddle.Checkout) Paddle.Checkout.close(); } catch (e) {}
+      }, 1400);
+     } catch (e) {}
     }
     if (name === 'checkout.error' || name === 'checkout.warning') {
      console.warn('[paddle]', name, event);
