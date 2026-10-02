@@ -283,9 +283,10 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
  <span class="wa-fab-label">Fale Conosco</span>
 </a>
 
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.70';
+const APP_VERSION = '1.5.90';
 
 /** Locale: winnertracker.com (or ?lang=en) → English / Winner Tracker */
 function detectLocale() {
@@ -300,7 +301,8 @@ function detectLocale() {
 }
 const LOCALE = detectLocale();
 const IS_EN = LOCALE === 'en';
-const CHECKOUT_ENABLED = !IS_EN;
+let CHECKOUT_ENABLED = true; // atualizado no /api/hello (Paddle EN / Mercado Pago PT)
+let CHECKOUT_PROVIDER = IS_EN ? 'paddle' : 'mercadopago';
 const BRAND = IS_EN
   ? { name: 'Winner Tracker', mark: 'W', tagline: 'Competitive Marketing Analyst', short: 'Winner Tracker' }
   : { name: 'Radar da Concorrência', mark: 'R', tagline: 'Consultor de Marketing', short: 'Radar' };
@@ -316,13 +318,22 @@ const I18N = IS_EN ? {
   phoneNoted: 'Phone noted. Now send your **website URL** (e.g. `yourwebsite.com`).',
   needBoth: 'To start, send your **website** and **phone with country code** — same message is fine.\nEx: `yourwebsite.com, +15551234567`',
   contactCtaTitle: 'Want a deeper analysis?',
-  contactCtaBody: 'Paid Pro checkout is coming soon on Winner Tracker. Meanwhile, talk to us and we will help you go deeper on Ads, SEO, and Brand.',
+  contactCtaBody: 'Unlock Pro analysis with secure checkout (card).',
   contactCtaBtn: 'Talk to us on WhatsApp',
-  analysisDone: 'Free analysis complete. Review the rankings above — or talk to us for a deeper dive.',
+  analysisDone: 'Free analysis complete. Review the rankings above — unlock Pro or Extra channels below.',
   heroInvest: 'estimated spend/mo',
   adsLabel: 'ads',
   versionPro: 'Pro version',
   analysisTitle: 'Client vs competitors analysis',
+  payOpening: 'Opening secure Paddle checkout…',
+  payOpenBtn: 'Open payment',
+  payCheckBtn: 'I paid — verify',
+  payGenerating: 'Preparing checkout…',
+  payWaiting: 'Waiting for payment confirmation…',
+  payConfirmedPro: (name, channel) => `Payment confirmed. Thanks, **${name || 'you'}**! Your Pro analysis for **${channel}** is queued — we will follow up on your contact within 24h.`,
+  payConfirmedExtras: 'Payment confirmed! Unlocking extra channels now…',
+  currencySymbol: '$',
+  perAnalysis: '/analysis',
 } : {
   ready: 'Pronto',
   topMeta: 'MVP Ads + SEO + Marca',
@@ -341,6 +352,15 @@ const I18N = IS_EN ? {
   adsLabel: 'anuncios',
   versionPro: 'Versão Pro',
   analysisTitle: 'Analise Cliente vs concorrentes',
+  payOpening: 'Abrindo o checkout do Mercado Pago (PIX ou cartão)…',
+  payOpenBtn: 'Abrir pagamento',
+  payCheckBtn: 'Já paguei — verificar',
+  payGenerating: 'Gerando checkout...',
+  payWaiting: 'Aguardando confirmação do pagamento...',
+  payConfirmedPro: (name, channel) => `Pagamento confirmado. Obrigado, **${name || 'tudo certo'}**! Sua análise Pro de **${channel}** entra na fila — em até 24h enviamos no contato cadastrado.`,
+  payConfirmedExtras: 'Pagamento confirmado! Liberando canais extra…',
+  currencySymbol: 'R$',
+  perAnalysis: '/análise',
 };
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
@@ -1151,9 +1171,43 @@ const PRO_QUESTIONS_TT = [
  'O que o líder posta no TikTok que eu ainda não testo?',
 ];
 
+function formatMoney(amount) {
+ const n = Number(amount);
+ const val = Number.isFinite(n) ? String(n) : String(amount || '');
+ return (I18N.currencySymbol || 'R$') + ' ' + val;
+}
+
+function initPaddleClient(cfg) {
+ if (!cfg || !cfg.client_token || typeof Paddle === 'undefined') return false;
+ if (window.__paddleReady) return true;
+ try {
+  if (cfg.sandbox !== false) Paddle.Environment.set('sandbox');
+  Paddle.Initialize({
+   token: cfg.client_token,
+   eventCallback(event) {
+    const name = event && event.name;
+    if (name === 'checkout.completed' || name === 'checkout.payment.completed') {
+     const oid = (event.data && (event.data.custom_data || event.data.customData) || {}).order_id
+      || window.__paddleLastOrderId
+      || '';
+     if (oid && typeof window.__onPaddlePaid === 'function') {
+      window.__onPaddlePaid(oid);
+     }
+    }
+   },
+  });
+  window.__paddleReady = true;
+  window.__paddleCfg = cfg;
+  return true;
+ } catch (e) {
+  console.warn('[paddle] init failed', e);
+  return false;
+ }
+}
+
 function startPaidCapture(channel) {
  const channelLabel = ({
-  ads: 'Google Ads', seo: 'SEO', brand: 'Marca',
+  ads: 'Google Ads', seo: IS_EN ? 'SEO' : 'SEO', brand: IS_EN ? 'Brand' : 'Marca',
   meta: 'Meta Ads', linkedin: 'LinkedIn', instagram: 'Instagram', youtube: 'YouTube', tiktok: 'TikTok',
  })[channel] || channel;
 
@@ -1169,11 +1223,20 @@ function startPaidCapture(channel) {
   orderId: '',
   leadId: '',
  };
- addBotBubble(
-  `Para liberar a **análise Pro de ${channelLabel}** (R$ ${window.__proPrice || 99}), me envie seu **nome** e **e-mail ou WhatsApp**. `
-  + 'Exemplo: `Maria Silva, maria@email.com` ou `João, 11999999999`.',
-  false
- );
+ const priceTxt = formatMoney(window.__proPrice || (IS_EN ? 29 : 99));
+ if (IS_EN) {
+  addBotBubble(
+   `To unlock the **Pro analysis for ${channelLabel}** (${priceTxt}), send your **name** and **email or phone**. `
+   + 'Example: `Maria Silva, maria@email.com` or `John, +15551234567`.',
+   false
+  );
+ } else {
+  addBotBubble(
+   `Para liberar a **análise Pro de ${channelLabel}** (${priceTxt}), me envie seu **nome** e **e-mail ou WhatsApp**. `
+   + 'Exemplo: `Maria Silva, maria@email.com` ou `João, 11999999999`.',
+   false
+  );
+ }
  // forçar scroll neste pedido de dados
  const last = thread.lastElementChild;
  if (last) last.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1199,6 +1262,143 @@ function parseLeadMessage(raw) {
  name = (name || '').trim();
  contact = (contact || '').trim();
  return { name, contact };
+}
+
+async function openCheckout(pending) {
+ if (CHECKOUT_PROVIDER === 'paddle' || IS_EN) {
+  return openPaddleCheckout(pending);
+ }
+ return openMercadoPagoCheckout(pending);
+}
+
+async function openPaddleCheckout(pending) {
+ const node = append(`
+  <div class="q-block reveal" data-section="checkout">
+   <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
+   <div class="q-bubble">${esc(I18N.payOpening)}</div>
+   <div class="pay-choice">
+    <button type="button" data-pay-open>${esc(I18N.payOpenBtn)}</button>
+    <button type="button" data-pay-check hidden>${esc(I18N.payCheckBtn)}</button>
+   </div>
+   <div class="hint" data-pay-hint></div>
+  </div>`, 'start');
+ const hint = node.querySelector('[data-pay-hint]');
+ const btnOpen = node.querySelector('[data-pay-open]');
+ const btnCheck = node.querySelector('[data-pay-check]');
+ let orderId = pending.orderId || '';
+ let pollTimer = null;
+ let paidDone = false;
+ if (!window.__mpConfirmedOrders) window.__mpConfirmedOrders = new Set();
+
+ async function checkPaid() {
+  if (!orderId || paidDone) return false;
+  if (window.__mpConfirmedOrders.has(orderId)) return true;
+  try {
+   const res = await fetch('/api/checkout/' + encodeURIComponent(orderId));
+   const data = await res.json();
+   if (data.paid) {
+    if (paidDone) return true;
+    paidDone = true;
+    window.__mpConfirmedOrders.add(orderId);
+    trackGtagPurchase(data);
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    try { sessionStorage.removeItem('radar_mp_pending'); } catch (e) {}
+    contactPending = null;
+    btnOpen.hidden = true;
+    btnCheck.hidden = true;
+    hint.textContent = '';
+    addBotBubble(
+     I18N.payConfirmedPro(pending.name, pending.channelLabel || pending.channel),
+     false
+    );
+    const last = thread.lastElementChild;
+    if (last) last.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
+   }
+   hint.textContent = data.paddle_status
+    ? ('Paddle status: ' + data.paddle_status)
+    : I18N.payWaiting;
+  } catch (e) {
+   hint.textContent = IS_EN
+    ? 'Could not verify yet. Try again in a moment.'
+    : 'Não consegui verificar agora. Tente de novo em instantes.';
+  }
+  return false;
+ }
+
+ window.__onPaddlePaid = (oid) => {
+  if (oid) orderId = oid;
+  checkPaid();
+ };
+
+ async function createAndOpen() {
+  hint.textContent = I18N.payGenerating;
+  btnOpen.disabled = true;
+  try {
+   if (!initPaddleClient(window.__paddleCfg || window.__paddleFromHello)) {
+    hint.textContent = IS_EN
+      ? 'Paddle checkout is not ready. Refresh the page or try again later.'
+      : 'Checkout Paddle não está pronto.';
+    btnOpen.disabled = false;
+    return;
+   }
+   const email = (pending.contact || '').includes('@') ? pending.contact : '';
+   const res = await fetch('/api/checkout', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+     lang: 'en',
+     channel: pending.channel,
+     product: 'deep_channel',
+     company: pending.company || analysisCtx.company || '',
+     slug: pending.slug || analysisCtx.slug || '',
+     job_id: pending.job_id || analysisCtx.job_id || '',
+     lead_id: pending.leadId || '',
+     name: pending.name || '',
+     contact: pending.contact || '',
+     email,
+     customer_email: email,
+    }),
+   });
+   const data = await res.json();
+   if (!res.ok) {
+    hint.textContent = data.error || 'Checkout failed';
+    btnOpen.disabled = false;
+    return;
+   }
+   orderId = data.order_id;
+   pending.orderId = orderId;
+   window.__paddleLastOrderId = orderId;
+   contactPending = { ...pending, phase: 'await_pay', orderId };
+   try {
+    sessionStorage.setItem('radar_mp_pending', JSON.stringify({
+     order_id: orderId, channel: pending.channel, lead_id: pending.leadId, provider: 'paddle', at: Date.now()
+    }));
+   } catch (e) {}
+   trackCheckoutOpen(data);
+   const openOpts = {
+    items: [{ priceId: data.price_id, quantity: 1 }],
+    customData: data.custom_data || { order_id: orderId },
+    settings: { displayMode: 'overlay', theme: 'light', locale: 'en' },
+   };
+   if (email) openOpts.customer = { email };
+   Paddle.Checkout.open(openOpts);
+   btnCheck.hidden = false;
+   btnOpen.disabled = false;
+   btnOpen.textContent = IS_EN ? 'Reopen payment' : 'Reabrir pagamento';
+   hint.textContent = IS_EN
+    ? 'Paddle checkout opened. Complete card payment — this chat tab stays open.'
+    : 'Checkout Paddle aberto.';
+   if (!pollTimer) pollTimer = setInterval(() => { checkPaid(); }, 4000);
+  } catch (e) {
+   hint.textContent = e.message;
+   btnOpen.disabled = false;
+  }
+ }
+
+ btnOpen.addEventListener('click', () => createAndOpen());
+ btnCheck.addEventListener('click', () => checkPaid());
+ createAndOpen();
 }
 
 async function openMercadoPagoCheckout(pending) {
@@ -1323,19 +1523,31 @@ async function submitPendingContact(rawContact) {
  if (!pending) return false;
 
  if (pending.phase === 'await_pay') {
-  addBotBubble('Conclua o pagamento no Mercado Pago (ou clique em **Já paguei — verificar**). Se precisar, use **Reabrir pagamento**.');
+  addBotBubble(
+   IS_EN
+     ? 'Complete payment in the Paddle checkout (or click **I paid — verify**). Use **Reopen payment** if needed.'
+     : 'Conclua o pagamento no Mercado Pago (ou clique em **Já paguei — verificar**). Se precisar, use **Reabrir pagamento**.'
+  );
   return true;
  }
 
  const { name, contact } = parseLeadMessage(rawContact);
  if (!contact || contact.length < 5) {
-  addBotBubble('Envie **nome** e **e-mail ou WhatsApp**. Ex: `Maria Silva, maria@email.com`.');
+  addBotBubble(
+   IS_EN
+     ? 'Send **name** and **email or phone**. Ex: `Maria Silva, maria@email.com`.'
+     : 'Envie **nome** e **e-mail ou WhatsApp**. Ex: `Maria Silva, maria@email.com`.'
+  );
   return true;
  }
  const looksEmail = contact.includes('@');
  const digits = contact.replace(/\D/g, '');
  if (!looksEmail && digits.length < 10) {
-  addBotBubble('Não identifiquei e-mail nem WhatsApp com DDD. Tente de novo, por exemplo: `João, 11999999999`.');
+  addBotBubble(
+   IS_EN
+     ? 'I could not identify an email or phone with country code. Try again, e.g. `John, +15551234567`.'
+     : 'Não identifiquei e-mail nem WhatsApp com DDD. Tente de novo, por exemplo: `João, 11999999999`.'
+  );
   return true;
  }
 
@@ -1358,7 +1570,7 @@ async function submitPendingContact(rawContact) {
   });
   const data = await res.json();
   if (!res.ok) {
-   addBotBubble(data.error || 'Não consegui salvar seus dados.');
+   addBotBubble(data.error || (IS_EN ? 'Could not save your details.' : 'Não consegui salvar seus dados.'));
    setBusy(false);
    return true;
   }
@@ -1371,26 +1583,34 @@ async function submitPendingContact(rawContact) {
   };
   contactPending = next;
   addBotBubble(
-   `Perfeito, **${name || 'registrado'}**! Salvei seu contato. Agora vou abrir o **Mercado Pago** para o pagamento da análise Pro.`
+   IS_EN
+     ? `Perfect, **${name || 'got it'}**! Contact saved. Opening **Paddle** for the Pro analysis payment.`
+     : `Perfeito, **${name || 'registrado'}**! Salvei seu contato. Agora vou abrir o **Mercado Pago** para o pagamento da análise Pro.`
   );
   setBusy(false);
-  await openMercadoPagoCheckout(next);
+  await openCheckout(next);
  } catch (e) {
-  addBotBubble('Falha ao salvar o contato: ' + e.message);
+  addBotBubble((IS_EN ? 'Failed to save contact: ' : 'Falha ao salvar o contato: ') + e.message);
   setBusy(false);
  }
  return true;
 }
 
 function renderProTeaser(opts) {
- if (VIDEO_MODE || OFFER_47 || !CHECKOUT_ENABLED) return; // EN / demo /47: sem paywall Pro
+ if (VIDEO_MODE || OFFER_47 || !CHECKOUT_ENABLED) return;
  const {
  channel = 'ads',
  questions = PRO_QUESTIONS_ADS,
- bubble = 'Quer ir além do ranking? Na <strong>versão Pro</strong> você pergunta sobre os anúncios reais da concorrência.',
- label = 'Radar Pro Google Ads profundo',
- blurb = 'Exemplos de perguntas desbloqueadas na versão paga:',
- ctaText = 'Desbloqueie comparação de campanhas, modelos de anúncio e os <strong>top anúncios</strong> do líder do nicho.',
+ bubble = IS_EN
+  ? 'Want to go beyond the ranking? In the <strong>Pro version</strong> you ask about real competitor ads.'
+  : 'Quer ir além do ranking? Na <strong>versão Pro</strong> você pergunta sobre os anúncios reais da concorrência.',
+ label = IS_EN ? 'Winner Tracker Pro — deep Google Ads' : 'Radar Pro Google Ads profundo',
+ blurb = IS_EN
+  ? 'Examples of questions unlocked in the paid version:'
+  : 'Exemplos de perguntas desbloqueadas na versão paga:',
+ ctaText = IS_EN
+  ? 'Unlock campaign comparison, ad creatives, and the niche leader’s <strong>top ads</strong>.'
+  : 'Desbloqueie comparação de campanhas, modelos de anúncio e os <strong>top anúncios</strong> do líder do nicho.',
  } = opts || {};
 
  const theme = channel === 'seo' ? 'seo' : (channel === 'brand' ? 'brand' : '');
@@ -1405,7 +1625,8 @@ function renderProTeaser(opts) {
  <span class="pill ${theme}">Pro</span>
  </button>`).join('');
 
- const price = (window.__proPrice || 99);
+ const price = (window.__proPrice || (IS_EN ? 29 : 99));
+ const priceLabel = formatMoney(price);
  const node = append(`
  <div class="q-block reveal">
  <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
@@ -1416,13 +1637,13 @@ function renderProTeaser(opts) {
  <div class="ac-agent ${agentCls}">P</div>
  <div class="ac-label ${labelCls}">${esc(label)}</div>
  </div>
- <div class="pro-price ${theme}"><span class="cur">R$</span><span class="val">${esc(String(price))}</span><span class="per">/análise</span></div>
+ <div class="pro-price ${theme}"><span class="cur">${esc(I18N.currencySymbol)}</span><span class="val">${esc(String(price))}</span><span class="per">${esc(I18N.perAnalysis)}</span></div>
  </div>
  <div class="ac-text" style="margin-top:12px;margin-bottom:4px">${esc(blurb)}</div>
  <div class="pro-qs">${qs}</div>
  <div class="pro-cta ${theme}">
  <div class="pro-cta-text">${ctaText}</div>
- <button type="button" class="pro-cta-btn ${theme}" data-pro-cta>Desbloquear por R$ ${esc(String(price))}</button>
+ <button type="button" class="pro-cta-btn ${theme}" data-pro-cta>${IS_EN ? 'Unlock for ' : 'Desbloquear por '}${esc(priceLabel)}</button>
  </div>
  </div>
  </div>`);
@@ -1548,20 +1769,24 @@ function renderProFinale() {
   renderSavedAnalysisLink();
   return renderExtras47();
  }
- const price = (window.__extrasPrice || window.__proPrice || 99);
+ const price = (window.__extrasPrice || window.__proPrice || (IS_EN ? 19 : 99));
+ const priceLabel = formatMoney(price);
  const node = append(`
  <div class="q-block reveal">
  <div class="bot-label"><span class="dot"></span>${esc(BRAND.name)}</div>
- <div class="q-bubble">O gratuito mostrou Ads, SEO e Marca. Quer abrir os <strong>canais extra</strong>?</div>
+ <div class="q-bubble">${IS_EN
+  ? 'The free report covered Ads, SEO, and Brand. Want to open the <strong>extra channels</strong>?'
+  : 'O gratuito mostrou Ads, SEO e Marca. Quer abrir os <strong>canais extra</strong>?'}</div>
  <div class="answer-card ac-finale">
- <div class="ac-head"><div class="ac-agent ag-finale">R</div><div class="ac-label lb-finale">Canais extra</div></div>
+ <div class="ac-head"><div class="ac-agent ag-finale">${esc(BRAND.mark)}</div><div class="ac-label lb-finale">${IS_EN ? 'Extra channels' : 'Canais extra'}</div></div>
  <div class="hero-num">
- <div class="finale-price">R$ ${esc(String(price))}</div>
+ <div class="finale-price">${esc(priceLabel)}</div>
  <div class="hero-sub">Meta · Instagram · YouTube · TikTok</div>
  </div>
  <div class="ac-text">
- Pague com <strong>PIX ou cartão</strong> via Mercado Pago e liberamos os rankings dos canais extra no chat.
- Cada canal também terá oferta Pro de análise profunda.
+ ${IS_EN
+  ? 'Pay securely with <strong>card via Paddle</strong> and we unlock Meta, Instagram, YouTube, and TikTok rankings in chat. Each channel also has a Pro deep-dive offer.'
+  : 'Pague com <strong>PIX ou cartão</strong> via Mercado Pago e liberamos os rankings dos canais extra no chat. Cada canal também terá oferta Pro de análise profunda.'}
  </div>
  <div class="channel-chips">
  <span class="channel-chip meta">Meta Ads</span>
@@ -1571,9 +1796,9 @@ function renderProFinale() {
  </div>
  <div class="finale-cta">
  <div class="pro-cta-text" style="max-width:380px">
- Clique para pagar e rodar os canais extra agora.
+ ${IS_EN ? 'Click to pay and run the extra channels now.' : 'Clique para pagar e rodar os canais extra agora.'}
  </div>
- <button type="button" class="finale-btn" data-extras-cta>Pagar e analisar canais extra</button>
+ <button type="button" class="finale-btn" data-extras-cta>${IS_EN ? 'Pay and analyze extra channels' : 'Pagar e analisar canais extra'}</button>
  </div>
  <div class="hint" data-extras-hint></div>
  </div>
@@ -1598,12 +1823,17 @@ async function startExtrasCheckout(root, btn) {
   return; // handled by verify handler
  }
  if (!analysisCtx.slug && !analysisCtx.company) {
-  addBotBubble('Rode uma análise gratuita primeiro (envie a URL do site) para eu ter o cliente dos canais extra.');
+  addBotBubble(
+   IS_EN
+     ? 'Run a free analysis first (send your website URL) so I know which client to unlock extras for.'
+     : 'Rode uma análise gratuita primeiro (envie a URL do site) para eu ter o cliente dos canais extra.'
+  );
   return;
  }
+ const usePaddle = CHECKOUT_PROVIDER === 'paddle' || IS_EN;
  const hint = root.querySelector('[data-extras-hint]');
  if (btn) btn.disabled = true;
- if (hint) hint.textContent = 'Gerando checkout Mercado Pago...';
+ if (hint) hint.textContent = usePaddle ? I18N.payGenerating : 'Gerando checkout Mercado Pago...';
  let orderId = '';
  let pollTimer = null;
  let started = false;
@@ -1617,17 +1847,27 @@ async function startExtrasCheckout(root, btn) {
     started = true;
     trackGtagPurchase(data);
     if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-    if (hint) hint.textContent = 'Pagamento confirmado. Iniciando canais extra...';
+    if (hint) hint.textContent = IS_EN ? 'Payment confirmed. Starting extra channels…' : 'Pagamento confirmado. Iniciando canais extra...';
     if (btn) btn.disabled = true;
-    addBotBubble('Pagamento dos **canais extra** confirmado. Vou liberar Meta, Instagram, YouTube e TikTok.');
+    addBotBubble(
+     IS_EN
+       ? I18N.payConfirmedExtras
+       : 'Pagamento dos **canais extra** confirmado. Vou liberar Meta, Instagram, YouTube e TikTok.'
+    );
     startExtrasJob();
     return true;
    }
-   if (hint) hint.textContent = data.mp_status
-    ? ('Status Mercado Pago: ' + data.mp_status)
-    : 'Aguardando confirmação do pagamento...';
+   if (hint) {
+    if (usePaddle) {
+     hint.textContent = data.paddle_status ? ('Paddle status: ' + data.paddle_status) : I18N.payWaiting;
+    } else {
+     hint.textContent = data.mp_status
+      ? ('Status Mercado Pago: ' + data.mp_status)
+      : 'Aguardando confirmação do pagamento...';
+    }
+   }
   } catch (e) {
-   if (hint) hint.textContent = 'Não consegui verificar agora. Tente de novo.';
+   if (hint) hint.textContent = IS_EN ? 'Could not verify yet. Try again.' : 'Não consegui verificar agora. Tente de novo.';
   }
   return false;
  }
@@ -1637,6 +1877,7 @@ async function startExtrasCheckout(root, btn) {
    method: 'POST',
    headers: { 'Content-Type': 'application/json' },
    body: JSON.stringify({
+    lang: usePaddle ? 'en' : 'pt',
     product: 'extras_pack',
     channel: 'canais-extra',
     company: analysisCtx.company || '',
@@ -1648,41 +1889,62 @@ async function startExtrasCheckout(root, btn) {
   });
   const data = await res.json();
   if (!res.ok) {
-   if (hint) hint.textContent = data.error || 'Falha ao criar pagamento';
+   if (hint) hint.textContent = data.error || (IS_EN ? 'Checkout failed' : 'Falha ao criar pagamento');
    if (btn) btn.disabled = false;
    return;
   }
   orderId = data.order_id;
+  window.__paddleLastOrderId = orderId;
   try {
    sessionStorage.setItem('radar_mp_pending', JSON.stringify({
-    order_id: orderId, product: 'extras_pack', at: Date.now()
+    order_id: orderId, product: 'extras_pack', provider: usePaddle ? 'paddle' : 'mercadopago', at: Date.now()
    }));
   } catch (e) {}
-  const url = data.init_point || data.sandbox_init_point;
-  if (!url) {
-   if (hint) hint.textContent = 'Checkout sem URL de pagamento.';
-   if (btn) btn.disabled = false;
-   return;
-  }
   trackCheckoutOpen(data);
-  window.open(url, 'radar_mp_checkout');
-  if (hint) hint.textContent = 'Janela do Mercado Pago aberta (PIX ou cartão). Esta aba do chat continua aqui — depois clique em verificar se não avançar sozinho.';
+
+  if (usePaddle) {
+   if (!initPaddleClient(window.__paddleCfg || window.__paddleFromHello)) {
+    if (hint) hint.textContent = 'Paddle checkout is not ready. Refresh and try again.';
+    if (btn) btn.disabled = false;
+    return;
+   }
+   window.__onPaddlePaid = (oid) => {
+    if (oid) orderId = oid;
+    checkPaidAndRun();
+   };
+   Paddle.Checkout.open({
+    items: [{ priceId: data.price_id, quantity: 1 }],
+    customData: data.custom_data || { order_id: orderId },
+    settings: { displayMode: 'overlay', theme: 'light', locale: 'en' },
+   });
+   if (hint) hint.textContent = 'Paddle checkout opened. Complete card payment — this chat stays open.';
+  } else {
+   const url = data.init_point || data.sandbox_init_point;
+   if (!url) {
+    if (hint) hint.textContent = 'Checkout sem URL de pagamento.';
+    if (btn) btn.disabled = false;
+    return;
+   }
+   window.open(url, 'radar_mp_checkout');
+   if (hint) hint.textContent = 'Janela do Mercado Pago aberta (PIX ou cartão). Esta aba do chat continua aqui — depois clique em verificar se não avançar sozinho.';
+   window.addEventListener('message', function onRet(ev) {
+    const d = ev && ev.data;
+    if (!d || d.type !== 'mp_return') return;
+    if (d.order_id) orderId = d.order_id;
+    checkPaidAndRun();
+   });
+  }
+
   if (btn) {
    btn.disabled = false;
    btn.dataset.mode = 'verify';
-   btn.textContent = 'Já paguei — verificar';
+   btn.textContent = I18N.payCheckBtn;
    btn.addEventListener('click', (ev) => {
     ev.stopImmediatePropagation();
     checkPaidAndRun();
    });
   }
   pollTimer = setInterval(() => { checkPaidAndRun(); }, 4000);
-  window.addEventListener('message', function onRet(ev) {
-   const d = ev && ev.data;
-   if (!d || d.type !== 'mp_return') return;
-   if (d.order_id) orderId = d.order_id;
-   checkPaidAndRun();
-  });
  } catch (e) {
   if (hint) hint.textContent = e.message;
   if (btn) btn.disabled = false;
@@ -2032,8 +2294,17 @@ async function boot() {
  const res = await fetch('/api/hello?lang=' + encodeURIComponent(LOCALE));
  const data = await res.json();
  stepDefs = data.steps || [];
- if (data.brand) {
-  // server brand wins if present
+ if (typeof data.checkout_enabled === 'boolean') {
+  CHECKOUT_ENABLED = data.checkout_enabled;
+ }
+ if (data.checkout_provider) CHECKOUT_PROVIDER = data.checkout_provider;
+ window.__proPrice = data.pro_price || (IS_EN ? 29 : 99);
+ window.__extrasPrice = data.extras_price || data.pro_price || (IS_EN ? 19 : 99);
+ window.__currency = data.currency || (IS_EN ? 'USD' : 'BRL');
+ if (data.paddle) {
+  window.__paddleFromHello = data.paddle;
+  window.__paddleCfg = data.paddle;
+  initPaddleClient(data.paddle);
  }
  if (VIDEO_MODE) {
   addBotBubble(
@@ -2042,13 +2313,10 @@ async function boot() {
      : 'Modo **demo para vídeo**. Vou carregar o exemplo **Chatguru** (Ads, SEO, Marca) e em seguida os **canais extra**, sem checkout.',
    true
   );
-  window.__proPrice = data.pro_price || 99;
-  window.__extrasPrice = data.extras_price || data.pro_price || 99;
   setTimeout(() => startVideoDemo(), 900);
   return;
  }
  if (OFFER_47) {
-  window.__proPrice = data.pro_price || 99;
   window.__extrasPrice = 47;
   addBotBubble(
    'Olá! Gostaria de saber quais estratégias de marketing **seus concorrentes estão utilizando para faturar mais?** Posso te mostrar isso agora!',
@@ -2065,8 +2333,6 @@ async function boot() {
   return;
  }
  addBotBubble(data.greeting, true);
- window.__proPrice = data.pro_price || 99;
- window.__extrasPrice = data.extras_price || data.pro_price || 99;
  setTimeout(() => {
  const askNode = addBotBubble(data.ask, true);
  const hint = document.createElement('div');

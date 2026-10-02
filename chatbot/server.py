@@ -41,6 +41,14 @@ from mercadopago_client import (
     mp_configured,
     mp_public_key,
 )
+from paddle_client import (
+    apply_paddle_transaction,
+    create_paddle_checkout,
+    paddle_configured,
+    public_config as paddle_public_config,
+    verify_paddle_signature,
+    paddle_webhook_secret,
+)
 from meta_capi import capi_configured, send_capi_event
 from openai_capi import configured as openai_capi_configured
 from openai_capi import send_event as send_openai_event
@@ -80,7 +88,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.70"
+APP_VERSION = "1.5.90"
 
 try:
     usage_db.init_db()
@@ -325,6 +333,9 @@ def hello():
     locale = _request_locale()
     copy = hello_payload(locale, live_ok=live_ok, missing_keys=_missing_live_keys() if not live_ok else None)
     brand = brand_for(locale)
+    paddle = paddle_public_config()
+    en = locale == "en"
+    checkout_ok = (paddle_configured() if en else mp_configured())
     return jsonify({
         "greeting": copy["greeting"],
         "ask": copy["ask"],
@@ -333,12 +344,15 @@ def hello():
         "demo_only": DEMO_ONLY,
         "live_ready": live_ok,
         "keys_ready": keys,
-        "payments_ready": mp_configured() and locale != "en",
-        "checkout_enabled": locale != "en",
+        "payments_ready": checkout_ok,
+        "checkout_enabled": checkout_ok,
+        "checkout_provider": "paddle" if en else "mercadopago",
+        "paddle": paddle if en else None,
         "meta_capi_ready": capi_configured(),
         "openai_capi_ready": openai_capi_configured(),
-        "pro_price": PRO_PRICE,
-        "extras_price": EXTRAS_PRICE,
+        "pro_price": paddle["pro_price"] if en else PRO_PRICE,
+        "extras_price": paddle["extras_price"] if en else EXTRAS_PRICE,
+        "currency": "USD" if en else "BRL",
         "version": APP_VERSION,
         "locale": locale,
         "brand": brand["brand"],
@@ -558,7 +572,8 @@ def chat():
         "ack": _ack_message(parsed, locale),
         "demo_only": DEMO_ONLY,
         "locale": locale,
-        "checkout_enabled": locale != "en",
+        "checkout_enabled": (paddle_configured() if locale == "en" else mp_configured()),
+        "checkout_provider": "paddle" if locale == "en" else "mercadopago",
     })
 
 
@@ -589,14 +604,40 @@ def _ack_message(parsed: ParsedInput, locale: str = "pt") -> str:
 
 @app.post("/api/checkout")
 def checkout():
-    """Cria Checkout Pro (PIX + cartao) para Radar Pro R$99."""
+    """Cria checkout: Mercado Pago (PT) ou Paddle overlay (EN)."""
     data = request.get_json(silent=True) or {}
-    if _request_locale(data) == "en":
-        return jsonify({
-            "error": "Paid checkout is not available on Winner Tracker yet. Contact us for a deeper analysis.",
-            "checkout_enabled": False,
-        }), 503
+    locale = _request_locale(data)
     channel = (data.get("channel") or "").strip() or "canal"
+    product = (data.get("product") or "deep_channel").strip().lower()
+    funnel = (data.get("funnel") or "").strip()
+    if not funnel:
+        raw_attr = data.get("attribution") if isinstance(data.get("attribution"), dict) else {}
+        funnel = str(raw_attr.get("funnel") or "").strip()
+    company = (data.get("company") or "").strip()
+    slug = (data.get("slug") or "").strip()
+    job_id = (data.get("job_id") or "").strip()
+
+    if locale == "en":
+        if not paddle_configured():
+            return jsonify({
+                "error": "Paddle is not configured yet. Set PADDLE_CLIENT_TOKEN on the server.",
+                "payments_ready": False,
+                "checkout_provider": "paddle",
+            }), 503
+        try:
+            result = create_paddle_checkout(
+                channel=channel,
+                company=company,
+                slug=slug,
+                job_id=job_id,
+                product=product,
+                funnel=funnel,
+                customer_email=(data.get("email") or data.get("customer_email") or "").strip(),
+            )
+            return jsonify({"ok": True, **result})
+        except Exception as e:
+            return jsonify({"error": str(e), "checkout_provider": "paddle"}), 502
+
     if not mp_configured():
         return jsonify({
             "error": (
@@ -606,22 +647,17 @@ def checkout():
             "payments_ready": False,
         }), 503
     try:
-        product = (data.get("product") or "deep_channel").strip().lower()
-        funnel = (data.get("funnel") or "").strip()
-        if not funnel:
-            raw_attr = data.get("attribution") if isinstance(data.get("attribution"), dict) else {}
-            funnel = str(raw_attr.get("funnel") or "").strip()
         unit_price = 47.0 if funnel == "radar_47" and product == "extras_pack" else None
         result = create_pro_checkout(
             channel=channel,
-            company=(data.get("company") or "").strip(),
-            slug=(data.get("slug") or "").strip(),
-            job_id=(data.get("job_id") or "").strip(),
+            company=company,
+            slug=slug,
+            job_id=job_id,
             product=product,
             unit_price=unit_price,
             funnel=funnel,
         )
-        return jsonify({"ok": True, **result})
+        return jsonify({"ok": True, "provider": "mercadopago", **result})
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
@@ -634,15 +670,46 @@ def checkout_status(order_id: str):
     return jsonify({
         "order_id": order["id"],
         "status": order.get("status"),
+        "provider": order.get("provider") or "mercadopago",
         "mp_status": order.get("mp_status"),
+        "paddle_status": order.get("paddle_status"),
         "channel": order.get("channel"),
         "product": order.get("product"),
         "amount": order.get("amount"),
-        "currency": order.get("currency") or "BRL",
+        "currency": order.get("currency") or ("USD" if order.get("provider") == "paddle" else "BRL"),
         "paid": order.get("status") == "paid",
         "preference_id": order.get("preference_id"),
         "init_point": order.get("init_point"),
+        "price_id": order.get("price_id"),
     })
+
+
+@app.post("/api/webhooks/paddle")
+def paddle_webhook():
+    """Paddle Billing notifications (transaction.completed / paid)."""
+    raw = request.get_data() or b""
+    sig = request.headers.get("Paddle-Signature") or ""
+    secret = paddle_webhook_secret()
+    if secret and not verify_paddle_signature(raw, sig, secret):
+        print("[PADDLE-WEBHOOK] invalid signature", flush=True)
+        return jsonify({"ok": False, "error": "invalid signature"}), 403
+    try:
+        event = json.loads(raw.decode("utf-8") or "{}")
+    except Exception:
+        event = request.get_json(silent=True) or {}
+    event_type = str(event.get("event_type") or event.get("type") or "")
+    print(f"[PADDLE-WEBHOOK] type={event_type}", flush=True)
+    try:
+        if "transaction" in event_type.lower():
+            order = apply_paddle_transaction(event)
+            print(
+                f"[PADDLE-WEBHOOK] order={order and order.get('id')} status={order and order.get('status')}",
+                flush=True,
+            )
+    except Exception as e:
+        print(f"[PADDLE-WEBHOOK] erro: {e}", flush=True)
+        return jsonify({"ok": False, "error": str(e)}), 200
+    return jsonify({"ok": True})
 
 
 @app.post("/api/webhooks/mercadopago")

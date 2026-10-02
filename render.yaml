@@ -39,6 +39,20 @@ services:
         value: "https://agente.radardaconcorrencia.com.br"
       - key: PRO_PRICE_BRL
         value: "99"
+      - key: PADDLE_CLIENT_TOKEN
+        sync: false
+      - key: PADDLE_WEBHOOK_SECRET
+        sync: false
+      - key: PADDLE_ENV
+        value: "sandbox"
+      - key: PADDLE_PRICE_PRO
+        value: "pri_01m3ywxjq2sevxc9ydrp0ad5gn"
+      - key: PADDLE_PRICE_EXTRAS
+        value: "pri_01m3ywxk2v8h34yz38k1mbg8m9"
+      - key: PRO_PRICE_USD
+        value: "29"
+      - key: EXTRAS_PRICE_USD
+        value: "19"
       - key: META_PIXEL_ID
         value: "2289325455219613"
       - key: META_CAPI_ACCESS_TOKEN
