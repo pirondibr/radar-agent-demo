@@ -124,14 +124,19 @@ def create_paddle_checkout(
         "currency": "USD",
         "channel": channel,
         "product": product,
+        # Paddle custom_data: flat string values only; omit empties
         "custom_data": {
-            "order_id": order_id,
-            "product": product,
-            "channel": channel,
-            "company": company,
-            "slug": slug,
-            "job_id": job_id,
-            "funnel": funnel,
+            k: str(v)
+            for k, v in {
+                "order_id": order_id,
+                "product": product,
+                "channel": channel,
+                "company": company,
+                "slug": slug,
+                "job_id": job_id,
+                "funnel": funnel,
+            }.items()
+            if str(v or "").strip()
         },
     }
 

@@ -286,7 +286,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.90';
+const APP_VERSION = '1.5.91';
 
 /** Locale: winnertracker.com (or ?lang=en) → English / Winner Tracker */
 function detectLocale() {
@@ -1192,6 +1192,21 @@ function initPaddleClient(cfg) {
       || '';
      if (oid && typeof window.__onPaddlePaid === 'function') {
       window.__onPaddlePaid(oid);
+     }
+    }
+    if (name === 'checkout.error' || name === 'checkout.warning') {
+     console.warn('[paddle]', name, event);
+     const detail = (event && (event.detail || event.code || (event.data && (event.data.detail || event.data.code)))) || '';
+     const hintEl = document.querySelector('[data-pay-hint], [data-extras-hint]');
+     if (hintEl && detail) {
+      const msg = String(detail);
+      if (/default payment link|checkout_url_not_set/i.test(msg + ' ' + (event.code || ''))) {
+       hintEl.textContent = IS_EN
+         ? 'Paddle: set Default payment link to https://winnertracker.com in sandbox Checkout settings.'
+         : 'Paddle: defina Default payment link = https://winnertracker.com no Checkout settings (sandbox).';
+      } else {
+       hintEl.textContent = (IS_EN ? 'Paddle error: ' : 'Erro Paddle: ') + msg;
+      }
      }
     }
    },
