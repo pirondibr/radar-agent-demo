@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Legal · Winner Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#fafafa;--surface:#fff;--border:#e0e0e6;--text:#111;--text-2:#555568;--accent:#4f46e5}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.65;-webkit-font-smoothing:antialiased}
+.top{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.top a{color:var(--accent);text-decoration:none;font-weight:600;font-size:13px}
+.top-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#4f46e5,#6366f1);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900}
+.top-name{font-weight:800;font-size:14px}
+.nav{display:flex;gap:16px;margin-left:auto;flex-wrap:wrap}
+.nav a{color:var(--text-2);font-weight:600;font-size:13px;text-decoration:none}
+.nav a.active,.nav a:hover{color:var(--accent)}
+.wrap{max-width:760px;margin:0 auto;padding:36px 20px 80px}
+h1{font-size:28px;letter-spacing:-.03em;margin-bottom:8px}
+.updated{font-size:13px;color:var(--text-2);margin-bottom:28px}
+h2{font-size:18px;margin:28px 0 10px}
+p,li{font-size:15px;color:#1f2937;margin-bottom:12px}
+ul{padding-left:1.2em;margin-bottom:16px}
+.section{display:none}
+.section.active{display:block}
+.footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--border);font-size:13px;color:var(--text-2)}
+.footer a{color:var(--accent);text-decoration:none;margin-right:14px}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="top-mark" id="mark">W</div>
+  <div class="top-name" id="brandName">Winner Tracker</div>
+  <nav class="nav" id="nav">
+    <a href="/terms" data-page="terms">Terms of Service</a>
+    <a href="/privacy" data-page="privacy">Privacy Notice</a>
+    <a href="/refund" data-page="refund">Refund Policy</a>
+  </nav>
+  <a href="/" id="backHome">← Back</a>
+</div>
+<main class="wrap">
+  <section class="section" data-page="terms">
+    <h1 id="termsTitle">Terms of Service</h1>
+    <p class="updated" id="termsUpdated">Last updated: October 2, 2026</p>
+    <div id="termsBody"></div>
+  </section>
+  <section class="section" data-page="privacy">
+    <h1 id="privacyTitle">Privacy Notice</h1>
+    <p class="updated" id="privacyUpdated">Last updated: October 2, 2026</p>
+    <div id="privacyBody"></div>
+  </section>
+  <section class="section" data-page="refund">
+    <h1 id="refundTitle">Refund Policy</h1>
+    <p class="updated" id="refundUpdated">Last updated: October 2, 2026</p>
+    <div id="refundBody"></div>
+  </section>
+  <div class="footer">
+    <a href="/terms" data-page="terms">Terms</a>
+    <a href="/privacy" data-page="privacy">Privacy</a>
+    <a href="/refund" data-page="refund">Refunds</a>
+    <a href="/">Home</a>
+  </div>
+</main>
+<script>
+(function () {
+  var host = (location.hostname || '').replace(/^www\./i, '').toLowerCase();
+  var q = (new URLSearchParams(location.search).get('lang') || '').toLowerCase();
+  var isBrHost = host.indexOf('radardaconcorrencia') >= 0;
+  var en = q.indexOf('en') === 0 ? true : (q.indexOf('pt') === 0 ? false : !isBrHost);
+
+  var brand = en
+    ? { name: 'Winner Tracker', mark: 'W', contact: 'WhatsApp +55 18 99700-5665', site: 'https://winnertracker.com' }
+    : { name: 'Radar da Concorrência', mark: 'R', contact: 'WhatsApp +55 18 99700-5665', site: 'https://agente.radardaconcorrencia.com.br' };
+
+  document.documentElement.lang = en ? 'en' : 'pt-BR';
+  document.getElementById('mark').textContent = brand.mark;
+  document.getElementById('brandName').textContent = brand.name;
+  document.getElementById('backHome').textContent = en ? '← Back' : '← Voltar';
+  document.title = 'Legal · ' + brand.name;
+
+  var navLabels = en
+    ? { terms: 'Terms of Service', privacy: 'Privacy Notice', refund: 'Refund Policy' }
+    : { terms: 'Termos de Uso', privacy: 'Aviso de Privacidade', refund: 'Política de Reembolso' };
+  document.querySelectorAll('#nav a').forEach(function (a) {
+    var p = a.getAttribute('data-page');
+    if (navLabels[p]) a.textContent = navLabels[p];
+  });
+
+  var copy = en ? {
+    termsTitle: 'Terms of Service',
+    privacyTitle: 'Privacy Notice',
+    refundTitle: 'Refund Policy',
+    updated: 'Last updated: October 2, 2026',
+    terms: '<p>These Terms of Service (“Terms”) govern your use of <strong>' + brand.name + '</strong> (' + brand.site + '), including our free competitive marketing analysis and paid Pro / Extra Channels reports.</p>'
+      + '<h2>1. Service</h2><p>' + brand.name + ' provides automated and analyst-assisted competitive insights (ads, SEO, brand, and related channels). Free analyses are informational. Paid unlocks deliver deeper reports as described at checkout.</p>'
+      + '<h2>2. Accounts &amp; accuracy</h2><p>You agree to provide accurate contact and website information. Insights are estimates based on publicly available and third-party data sources and may be incomplete or change over time.</p>'
+      + '<h2>3. Payments</h2><p>Paid products are one-time digital purchases processed by our payment partner (Paddle for USD / international). Prices shown at checkout include applicable taxes where required by Paddle’s merchant of record model.</p>'
+      + '<h2>4. Acceptable use</h2><ul><li>Do not misuse the service, attempt unauthorized access, or scrape our systems.</li><li>Do not use outputs for unlawful, deceptive, or abusive purposes.</li><li>You remain responsible for how you use any insights in your marketing.</li></ul>'
+      + '<h2>5. Intellectual property</h2><p>The ' + brand.name + ' brand, UI, and software are ours. You may use purchased reports for your internal business purposes. You may not resell our raw platform as your own product.</p>'
+      + '<h2>6. Disclaimers</h2><p>The service is provided “as is.” We do not guarantee rankings, traffic, or revenue outcomes. To the fullest extent permitted by law, we are not liable for indirect or consequential damages. Our total liability for a paid order is limited to the amount you paid for that order.</p>'
+      + '<h2>7. Contact</h2><p>Questions about these Terms: ' + brand.contact + '.</p>',
+    privacy: '<p>This Privacy Notice explains how <strong>' + brand.name + '</strong> collects and uses information when you use ' + brand.site + '.</p>'
+      + '<h2>1. What we collect</h2><ul><li><strong>Contact &amp; lead data:</strong> name, email, phone/WhatsApp, website URL you submit.</li><li><strong>Order data:</strong> product purchased, amount, currency, and payment status via our processor (Paddle). We do not store full card numbers.</li><li><strong>Usage data:</strong> pages viewed, device/browser basics, and diagnostics needed to run analyses.</li><li><strong>Marketing pixels:</strong> we may use Meta, Google, OpenAI Ads, and similar tools to measure ads and conversions.</li></ul>'
+      + '<h2>2. How we use data</h2><ul><li>Deliver free and paid analyses and follow-up communications.</li><li>Process payments and prevent fraud.</li><li>Improve the product and measure marketing performance.</li><li>Comply with legal obligations.</li></ul>'
+      + '<h2>3. Sharing</h2><p>We share data with service providers who help us operate (hosting, payment processing via Paddle, analytics, messaging). Paddle acts as merchant of record for applicable checkouts and processes payment data under its own privacy policy.</p>'
+      + '<h2>4. Retention</h2><p>We keep lead, order, and analysis records as needed to deliver the service, handle support/refunds, and meet legal requirements, then delete or anonymize when no longer needed.</p>'
+      + '<h2>5. Your choices</h2><p>You may request access, correction, or deletion of personal data we hold, or ask questions about this notice, via ' + brand.contact + '.</p>'
+      + '<h2>6. International transfers</h2><p>Our providers may process data in the United States, Brazil, the EU/UK, or other countries with appropriate safeguards where required.</p>',
+    refund: '<p>This Refund Policy applies to paid digital products sold by <strong>' + brand.name + '</strong> (Pro deep-channel analysis and Extra Channels unlocks), including purchases processed by Paddle.</p>'
+      + '<h2>1. Digital nature of the product</h2><p>Our paid offerings are digital informational reports and unlocks. Delivery begins when payment is confirmed (report queue and/or in-chat unlock).</p>'
+      + '<h2>2. When you can get a refund</h2><ul><li><strong>Non-delivery:</strong> if we fail to deliver the purchased analysis unlock within the stated timeframe (typically up to 24 hours for Pro delivery follow-up) after confirmed payment, contact us for a full refund.</li><li><strong>Duplicate / technical charge:</strong> accidental duplicate payments or clear payment errors are refundable.</li><li><strong>Goodwill window:</strong> if you are unsatisfied and request a refund within <strong>14 days</strong> of purchase <em>and</em> we have not yet delivered the Pro report or unlocked Extra Channels content, we will refund you.</li></ul>'
+      + '<h2>3. When refunds are not available</h2><ul><li>After the Pro report has been delivered or Extra Channels content has been unlocked in your session.</li><li>Change of mind after successful delivery of digital content.</li><li>Outcomes (traffic, ads performance, rankings) different from expectations — insights are estimates, not guarantees.</li></ul>'
+      + '<h2>4. How to request a refund</h2><p>Contact ' + brand.contact + ' with your order email, approximate purchase time, and reason. Approved refunds are processed via Paddle (or the original payment method) and may take several business days to appear on your statement.</p>'
+      + '<h2>5. Chargebacks</h2><p>Please contact us before opening a chargeback so we can resolve the issue quickly. Unfounded chargebacks may result in suspension of access.</p>'
+  } : {
+    termsTitle: 'Termos de Uso',
+    privacyTitle: 'Aviso de Privacidade',
+    refundTitle: 'Política de Reembolso',
+    updated: 'Última atualização: 2 de outubro de 2026',
+    terms: '<p>Estes Termos de Uso (“Termos”) regem o uso do <strong>' + brand.name + '</strong> (' + brand.site + '), incluindo a análise gratuita e os relatórios pagos Pro / Canais Extra.</p>'
+      + '<h2>1. Serviço</h2><p>O ' + brand.name + ' oferece insights competitivos automatizados e com apoio analítico (ads, SEO, marca e canais relacionados). Análises gratuitas são informativas. Desbloqueios pagos entregam relatórios mais profundos conforme descrito no checkout.</p>'
+      + '<h2>2. Dados e exatidão</h2><p>Você concorda em informar contato e site corretos. Os insights são estimativas com base em dados públicos e de terceiros e podem estar incompletos ou mudar com o tempo.</p>'
+      + '<h2>3. Pagamentos</h2><p>Produtos pagos são compras digitais únicas processadas por nossos parceiros de pagamento (Mercado Pago no Brasil; Paddle para USD/internacional quando aplicável).</p>'
+      + '<h2>4. Uso aceitável</h2><ul><li>Não abuse do serviço, tente acesso não autorizado ou faça scraping de nossos sistemas.</li><li>Não use os resultados para fins ilícitos, enganosos ou abusivos.</li><li>Você é responsável por como aplica os insights no seu marketing.</li></ul>'
+      + '<h2>5. Propriedade intelectual</h2><p>A marca, interface e software do ' + brand.name + ' são nossos. Relatórios comprados podem ser usados para fins internos do seu negócio. É proibido revender a plataforma como produto próprio.</p>'
+      + '<h2>6. Isenções</h2><p>O serviço é oferecido “como está”. Não garantimos rankings, tráfego ou faturamento. Na máxima extensão permitida pela lei, não respondemos por danos indiretos. A responsabilidade total por um pedido pago limita-se ao valor pago naquele pedido.</p>'
+      + '<h2>7. Contato</h2><p>Dúvidas sobre estes Termos: ' + brand.contact + '.</p>',
+    privacy: '<p>Este Aviso de Privacidade explica como o <strong>' + brand.name + '</strong> coleta e usa informações em ' + brand.site + '.</p>'
+      + '<h2>1. O que coletamos</h2><ul><li><strong>Contato e leads:</strong> nome, e-mail, telefone/WhatsApp, URL do site informada.</li><li><strong>Pedidos:</strong> produto, valor, moeda e status do pagamento via processador (Mercado Pago / Paddle). Não armazenamos o número completo do cartão.</li><li><strong>Uso:</strong> páginas vistas, dados básicos de dispositivo/navegador e diagnósticos da análise.</li><li><strong>Pixels de marketing:</strong> podemos usar Meta, Google, OpenAI Ads e similares para medir anúncios e conversões.</li></ul>'
+      + '<h2>2. Como usamos</h2><ul><li>Entregar análises gratuitas/pagas e follow-up.</li><li>Processar pagamentos e prevenir fraude.</li><li>Melhorar o produto e medir marketing.</li><li>Cumprir obrigações legais (incl. LGPD, quando aplicável).</li></ul>'
+      + '<h2>3. Compartilhamento</h2><p>Compartilhamos dados com prestadores que nos ajudam a operar (hospedagem, pagamentos, analytics, mensageria). O Paddle pode atuar como merchant of record em checkouts internacionais.</p>'
+      + '<h2>4. Retenção</h2><p>Mantemos leads, pedidos e análises pelo tempo necessário para prestar o serviço, suporte/reembolsos e obrigações legais; depois excluímos ou anonimizamos.</p>'
+      + '<h2>5. Seus direitos</h2><p>Você pode solicitar acesso, correção ou exclusão dos dados pessoais, ou tirar dúvidas, pelo ' + brand.contact + '.</p>',
+    refund: '<p>Esta Política de Reembolso aplica-se aos produtos digitais pagos do <strong>' + brand.name + '</strong> (análise Pro e Canais Extra), inclusive compras via Paddle ou Mercado Pago.</p>'
+      + '<h2>1. Natureza digital</h2><p>São produtos digitais informativos. A entrega começa quando o pagamento é confirmado (fila do relatório e/ou desbloqueio no chat).</p>'
+      + '<h2>2. Quando há reembolso</h2><ul><li><strong>Não entrega:</strong> se não entregarmos o desbloqueio/análise no prazo informado (em geral até 24h para follow-up Pro) após pagamento confirmado, solicite reembolso integral.</li><li><strong>Cobrança duplicada / erro técnico:</strong> reembolsável.</li><li><strong>Janela de 14 dias:</strong> se estiver insatisfeito e pedir reembolso em até <strong>14 dias</strong> da compra <em>e</em> ainda não tivermos entregue o relatório Pro nem desbloqueado Canais Extra, faremos o reembolso.</li></ul>'
+      + '<h2>3. Quando não há reembolso</h2><ul><li>Após entrega do relatório Pro ou desbloqueio dos Canais Extra.</li><li>Arrependimento após a entrega do conteúdo digital.</li><li>Resultados de mercado diferentes da expectativa — insights são estimativas, não garantias.</li></ul>'
+      + '<h2>4. Como solicitar</h2><p>Fale conosco pelo ' + brand.contact + ' com e-mail do pedido, horário aproximado e motivo. Reembolsos aprovados seguem pelo processador original e podem levar alguns dias úteis no extrato.</p>'
+  };
+
+  document.getElementById('termsTitle').textContent = copy.termsTitle;
+  document.getElementById('privacyTitle').textContent = copy.privacyTitle;
+  document.getElementById('refundTitle').textContent = copy.refundTitle;
+  document.getElementById('termsUpdated').textContent = copy.updated;
+  document.getElementById('privacyUpdated').textContent = copy.updated;
+  document.getElementById('refundUpdated').textContent = copy.updated;
+  document.getElementById('termsBody').innerHTML = copy.terms;
+  document.getElementById('privacyBody').innerHTML = copy.privacy;
+  document.getElementById('refundBody').innerHTML = copy.refund;
+
+  var path = (location.pathname || '/').replace(/\/+$/, '') || '/';
+  var page = 'terms';
+  if (path.indexOf('/privacy') >= 0) page = 'privacy';
+  else if (path.indexOf('/refund') >= 0) page = 'refund';
+  var hash = (location.hash || '').replace('#', '');
+  if (hash === 'privacy' || hash === 'refund' || hash === 'terms') page = hash;
+
+  document.querySelectorAll('.section').forEach(function (el) {
+    el.classList.toggle('active', el.getAttribute('data-page') === page);
+  });
+  document.querySelectorAll('.nav a, .footer a[data-page]').forEach(function (a) {
+    a.classList.toggle('active', a.getAttribute('data-page') === page);
+  });
+})();
+</script>
+</body>
+</html>

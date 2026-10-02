@@ -177,7 +177,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
 .finale-btn.secondary:hover{background:var(--accent-bg)}
 .pdf-export-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center}
 @media print{
-  .top,.composer,.wa-fab,[data-no-print],.pro-cta,.pro-toast,.pay-choice,.pay-form,[data-extras-cta],[data-pdf-export]{display:none !important}
+  .top,.composer,.wa-fab,[data-no-print],.pro-cta,.pro-toast,.pay-choice,.pay-form,[data-extras-cta],[data-pdf-export],.legal-footer{display:none !important}
   body{background:#fff !important}
   .main{max-width:100%;padding:12px 16px;overflow:visible}
   .reveal{opacity:1 !important;transform:none !important;transition:none !important}
@@ -187,6 +187,10 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font
   .dt-bar-fill{print-color-adjust:exact;-webkit-print-color-adjust:exact}
 }
 .composer{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(180deg,transparent,var(--bg) 28%);padding:16px 20px 20px;z-index:90}
+.legal-footer{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;padding:0 8px 10px;font-size:11px}
+.legal-footer a{color:var(--text-3);text-decoration:none;font-weight:600}
+.legal-footer a:hover{color:var(--accent)}
+body.video-mode .legal-footer{display:none}
 .composer-inner{max-width:820px;margin:0 auto;display:flex;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:8px;box-shadow:0 8px 30px rgba(0,0,0,.06)}
 .composer input{flex:1;border:0;outline:none;padding:12px 14px;font-size:14px;font-family:inherit;background:transparent;color:var(--text)}
 .composer input::placeholder{color:var(--text-3)}
@@ -272,6 +276,11 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 <div class="main"><div class="thread" id="thread"></div></div>
 
 <div class="composer">
+ <div class="legal-footer" id="legalFooter">
+  <a href="/terms" target="_blank" rel="noopener noreferrer" data-legal="terms">Terms of Service</a>
+  <a href="/privacy" target="_blank" rel="noopener noreferrer" data-legal="privacy">Privacy Notice</a>
+  <a href="/refund" target="_blank" rel="noopener noreferrer" data-legal="refund">Refund Policy</a>
+ </div>
  <div class="composer-inner">
  <input id="msgInput" type="text" placeholder="Ex: seusite.com.br, 11999999999" autocomplete="off" />
  <button id="sendBtn" type="button">Enviar</button>
@@ -286,7 +295,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.92';
+const APP_VERSION = '1.5.93';
 
 /** Locale: winnertracker.com (or ?lang=en) → English / Winner Tracker */
 function detectLocale() {
@@ -334,6 +343,9 @@ const I18N = IS_EN ? {
   payConfirmedExtras: 'Payment confirmed! Unlocking extra channels now…',
   currencySymbol: '$',
   perAnalysis: '/analysis',
+  legalTerms: 'Terms of Service',
+  legalPrivacy: 'Privacy Notice',
+  legalRefund: 'Refund Policy',
 } : {
   ready: 'Pronto',
   topMeta: 'MVP Ads + SEO + Marca',
@@ -361,6 +373,9 @@ const I18N = IS_EN ? {
   payConfirmedExtras: 'Pagamento confirmado! Liberando canais extra…',
   currencySymbol: 'R$',
   perAnalysis: '/análise',
+  legalTerms: 'Termos de Uso',
+  legalPrivacy: 'Privacidade',
+  legalRefund: 'Reembolso',
 };
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
@@ -522,6 +537,11 @@ document.title = (VIDEO_MODE ? (IS_EN ? 'Video demo · ' : 'Demo vídeo · ') : 
     const lab = fab.querySelector('.wa-fab-label');
     if (lab) lab.textContent = I18N.waLabel;
   }
+  const legalMap = { terms: I18N.legalTerms, privacy: I18N.legalPrivacy, refund: I18N.legalRefund };
+  document.querySelectorAll('[data-legal]').forEach((a) => {
+    const key = a.getAttribute('data-legal');
+    if (legalMap[key]) a.textContent = legalMap[key];
+  });
 })();
 if (VIDEO_MODE) {
  document.body.classList.add('video-mode');

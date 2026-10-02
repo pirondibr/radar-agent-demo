@@ -88,7 +88,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.92"
+APP_VERSION = "1.5.93"
 
 try:
     usage_db.init_db()
@@ -324,6 +324,23 @@ def offer_47():
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
     return resp
+
+
+def _legal_page():
+    resp = send_from_directory(STATIC_DIR, "legal.html")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.get("/terms")
+@app.get("/privacy")
+@app.get("/refund")
+@app.get("/refunds")
+@app.get("/legal")
+def legal_pages():
+    """Terms / Privacy / Refund pages (required for Paddle website approval)."""
+    return _legal_page()
 
 
 @app.get("/api/hello")
