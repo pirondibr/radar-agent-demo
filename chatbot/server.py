@@ -72,7 +72,7 @@ _load_dotenv()
 
 # Public sample-only host when DEMO_ONLY=1. Live needs API keys (see .env.example).
 DEMO_ONLY = os.environ.get("DEMO_ONLY", "").strip().lower() in ("1", "true", "yes")
-APP_VERSION = "1.5.63"
+APP_VERSION = "1.5.64"
 
 try:
     usage_db.init_db()
@@ -376,7 +376,7 @@ def meta_capi_event():
 
 @app.post("/api/openai/event")
 def openai_capi_event():
-    """Relay de page_viewed, lead_created, checkout_started e order_created."""
+    """Relay de page_viewed, lead_created, checkout_started e sale."""
     data = request.get_json(silent=True) or {}
     event_type = str(data.get("event_type") or data.get("type") or "").strip()
     payload = data.get("data")
@@ -396,6 +396,7 @@ def openai_capi_event():
         phone=str(data.get("phone") or "").strip(),
         client_ip=client_ip,
         user_agent=(request.headers.get("User-Agent") or "")[:512],
+        custom_event_name=str(data.get("custom_event_name") or "").strip(),
     )
     status = 200 if result.get("ok") or result.get("skipped") else 502
     return jsonify(result), status

@@ -19,8 +19,9 @@ ALLOWED_EVENTS = {
     "page_viewed",
     "lead_created",
     "checkout_started",
-    "order_created",
+    "custom",
 }
+ALLOWED_CUSTOM = {"sale"}
 
 
 def pixel_id() -> str:
@@ -62,11 +63,15 @@ def send_event(
     phone: str = "",
     client_ip: str = "",
     user_agent: str = "",
+    custom_event_name: str = "",
 ) -> dict[str, Any]:
     """Envia um evento. A chave fica só no header, nunca no retorno."""
     kind = (event_type or "").strip()
+    custom_name = (custom_event_name or "").strip().lower()
     if kind not in ALLOWED_EVENTS:
         return {"ok": False, "error": "event_type invalido"}
+    if kind == "custom" and custom_name not in ALLOWED_CUSTOM:
+        return {"ok": False, "error": "custom_event_name invalido"}
     key = api_key()
     if not key:
         return {"ok": False, "skipped": True, "reason": "not_configured"}
@@ -74,6 +79,9 @@ def send_event(
     payload = dict(data or {})
     if kind == "lead_created":
         payload["type"] = "customer_action"
+        payload.pop("contents", None)
+    elif kind == "custom":
+        payload["type"] = "custom"
         payload.pop("contents", None)
     else:
         payload.setdefault("type", "contents")
@@ -94,6 +102,8 @@ def send_event(
         "source_url": (source_url or "https://agente.radardaconcorrencia.com.br/")[:2048],
         "data": payload,
     }
+    if kind == "custom":
+        event["custom_event_name"] = custom_name
     user: dict[str, Any] = {}
     email_hash = _sha256(email)
     if email_hash:
