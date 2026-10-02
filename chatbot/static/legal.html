@@ -33,6 +33,7 @@ ul{padding-left:1.2em;margin-bottom:16px}
   <div class="top-mark" id="mark">W</div>
   <div class="top-name" id="brandName">Winner Tracker</div>
   <nav class="nav" id="nav">
+    <a href="/pricing">Pricing</a>
     <a href="/terms" data-page="terms">Terms of Service</a>
     <a href="/privacy" data-page="privacy">Privacy Notice</a>
     <a href="/refund" data-page="refund">Refund Policy</a>
@@ -56,6 +57,7 @@ ul{padding-left:1.2em;margin-bottom:16px}
     <div id="refundBody"></div>
   </section>
   <div class="footer">
+    <a href="/pricing">Pricing</a>
     <a href="/terms" data-page="terms">Terms</a>
     <a href="/privacy" data-page="privacy">Privacy</a>
     <a href="/refund" data-page="refund">Refunds</a>
@@ -82,10 +84,14 @@ ul{padding-left:1.2em;margin-bottom:16px}
   var navLabels = en
     ? { terms: 'Terms of Service', privacy: 'Privacy Notice', refund: 'Refund Policy' }
     : { terms: 'Termos de Uso', privacy: 'Aviso de Privacidade', refund: 'Política de Reembolso' };
-  document.querySelectorAll('#nav a').forEach(function (a) {
+  document.querySelectorAll('#nav a[data-page]').forEach(function (a) {
     var p = a.getAttribute('data-page');
     if (navLabels[p]) a.textContent = navLabels[p];
   });
+  var pricingLink = document.querySelector('#nav a[href="/pricing"]');
+  if (pricingLink) pricingLink.textContent = en ? 'Pricing' : 'Preços';
+  var footerPricing = document.querySelector('.footer a[href="/pricing"]');
+  if (footerPricing) footerPricing.textContent = en ? 'Pricing' : 'Preços';
 
   var copy = en ? {
     termsTitle: 'Terms of Service',

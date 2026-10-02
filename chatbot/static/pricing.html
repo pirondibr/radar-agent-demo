@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pricing · Winner Tracker</title>
+<meta name="description" content="Winner Tracker pricing: Pro deep-channel analysis and Extra Channels unlock. Clear product description, prices, and deliverables.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f7f7fb;--surface:#fff;--border:#e2e8f0;--text:#0f172a;--muted:#64748b;--accent:#4f46e5;--accent-2:#6366f1;--green:#059669}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh}
+.top{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:10}
+.top-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent-2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:900}
+.top-name{font-weight:800;font-size:14px}
+.top-nav{margin-left:auto;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.top-nav a{color:var(--muted);text-decoration:none;font-weight:600;font-size:13px}
+.top-nav a:hover,.top-nav a.active{color:var(--accent)}
+.cta-top{background:var(--accent);color:#fff !important;padding:8px 14px;border-radius:10px}
+.hero{max-width:960px;margin:0 auto;padding:48px 20px 24px;text-align:center}
+.hero .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:rgba(79,70,229,.08);border:1px solid rgba(79,70,229,.15);padding:5px 10px;border-radius:999px;margin-bottom:14px}
+.hero h1{font-size:clamp(28px,5vw,40px);letter-spacing:-.04em;line-height:1.15;margin-bottom:12px}
+.hero p{max-width:640px;margin:0 auto;color:var(--muted);font-size:16px}
+.wrap{max-width:960px;margin:0 auto;padding:12px 20px 64px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:28px}
+@media(max-width:860px){.cards{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px 22px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.card.featured{border-color:rgba(79,70,229,.45);box-shadow:0 10px 30px rgba(79,70,229,.1);position:relative}
+.badge{position:absolute;top:-11px;left:20px;background:var(--accent);color:#fff;font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px}
+.card h2{font-size:18px;margin-bottom:6px}
+.card .tag{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:14px}
+.price{display:flex;align-items:baseline;gap:6px;margin:8px 0 6px}
+.price .cur{font-size:18px;font-weight:800;color:var(--accent)}
+.price .val{font-size:40px;font-weight:900;letter-spacing:-.04em}
+.price .per{font-size:13px;color:var(--muted);font-weight:600}
+.blurb{color:var(--muted);font-size:14px;margin-bottom:16px;min-height:42px}
+.features{list-style:none;margin:0 0 22px;padding:0;flex:1}
+.features li{position:relative;padding:8px 0 8px 26px;font-size:14px;border-top:1px solid #f1f5f9}
+.features li:before{content:'✓';position:absolute;left:0;color:var(--green);font-weight:800}
+.btn{display:inline-flex;justify-content:center;align-items:center;width:100%;padding:12px 16px;border-radius:12px;background:var(--accent);color:#fff;font-weight:800;font-size:14px;text-decoration:none;border:none;cursor:pointer}
+.btn.secondary{background:#fff;color:var(--accent);border:1px solid rgba(79,70,229,.35)}
+.btn:hover{filter:brightness(1.05)}
+.about{margin-top:40px;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:28px 24px}
+.about h3{font-size:18px;margin-bottom:10px}
+.about p,.about li{font-size:14px;color:#334155;margin-bottom:10px}
+.about ul{padding-left:1.2em;margin-bottom:8px}
+.site-footer{max-width:960px;margin:0 auto;padding:0 20px 48px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px}
+.site-footer a{color:var(--muted);text-decoration:none;font-weight:600}
+.site-footer a:hover{color:var(--accent)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-mark" id="mark">W</div>
+  <div class="top-name" id="brandName">Winner Tracker</div>
+  <nav class="top-nav">
+    <a href="/pricing" class="active" id="navPricing">Pricing</a>
+    <a href="/terms" id="navTerms">Terms</a>
+    <a href="/privacy" id="navPrivacy">Privacy</a>
+    <a href="/refund" id="navRefund">Refunds</a>
+    <a class="cta-top" href="/" id="navStart">Start analysis</a>
+  </nav>
+</header>
+
+<section class="hero">
+  <div class="eyebrow" id="eyebrow">Competitive marketing intelligence</div>
+  <h1 id="heroTitle">Simple pricing for clearer competitor insights</h1>
+  <p id="heroSub">Winner Tracker analyzes your website and competitors across Ads, SEO, and Brand — then lets you unlock deeper Pro reports or extra social channels.</p>
+</section>
+
+<main class="wrap">
+  <div class="cards">
+    <article class="card" id="cardFree">
+      <div class="tag" id="freeTag">Free</div>
+      <h2 id="freeTitle">Free analysis</h2>
+      <div class="price"><span class="cur" id="freeCur">$</span><span class="val">0</span><span class="per" id="freePer">/report</span></div>
+      <p class="blurb" id="freeBlurb">Instant starter report so you can see how the product works before paying.</p>
+      <ul class="features" id="freeFeatures"></ul>
+      <a class="btn secondary" href="/" id="freeCta">Run free analysis</a>
+    </article>
+
+    <article class="card featured" id="cardPro">
+      <div class="badge" id="proBadge">Most popular</div>
+      <div class="tag" id="proTag">One-time</div>
+      <h2 id="proTitle">Pro deep-channel analysis</h2>
+      <div class="price"><span class="cur" id="proCur">$</span><span class="val" id="proVal">29</span><span class="per" id="proPer">/analysis</span></div>
+      <p class="blurb" id="proBlurb">Unlock a deeper dive on one channel (Google Ads, SEO, or Brand) with actionable competitor detail.</p>
+      <ul class="features" id="proFeatures"></ul>
+      <a class="btn" href="/" id="proCta">Buy Pro after free report</a>
+    </article>
+
+    <article class="card" id="cardExtras">
+      <div class="tag" id="extrasTag">One-time</div>
+      <h2 id="extrasTitle">Extra channels pack</h2>
+      <div class="price"><span class="cur" id="extrasCur">$</span><span class="val" id="extrasVal">19</span><span class="per" id="extrasPer">/pack</span></div>
+      <p class="blurb" id="extrasBlurb">Add Meta Ads, Instagram, YouTube, and TikTok rankings to your free Ads + SEO + Brand report.</p>
+      <ul class="features" id="extrasFeatures"></ul>
+      <a class="btn secondary" href="/" id="extrasCta">Unlock extras in chat</a>
+    </article>
+  </div>
+
+  <section class="about">
+    <h3 id="aboutTitle">What you are buying</h3>
+    <div id="aboutBody"></div>
+  </section>
+</main>
+
+<footer class="site-footer" id="siteFooter">
+  <a href="/pricing">Pricing</a>
+  <a href="/terms">Terms of Service</a>
+  <a href="/privacy">Privacy Notice</a>
+  <a href="/refund">Refund Policy</a>
+  <a href="/">Home</a>
+</footer>
+
+<script>
+(function () {
+  var host = (location.hostname || '').replace(/^www\./i, '').toLowerCase();
+  var q = (new URLSearchParams(location.search).get('lang') || '').toLowerCase();
+  var isBrHost = host.indexOf('radardaconcorrencia') >= 0;
+  var en = q.indexOf('en') === 0 ? true : (q.indexOf('pt') === 0 ? false : !isBrHost);
+
+  var brand = en
+    ? { name: 'Winner Tracker', mark: 'W', site: 'https://winnertracker.com' }
+    : { name: 'Radar da Concorrência', mark: 'R', site: 'https://agente.radardaconcorrencia.com.br' };
+
+  var prices = en
+    ? { pro: 29, extras: 19, cur: '$', proLabel: '/analysis', extrasLabel: '/pack', freeLabel: '/report' }
+    : { pro: 99, extras: 99, cur: 'R$', proLabel: '/análise', extrasLabel: '/pacote', freeLabel: '/relatório' };
+
+  document.documentElement.lang = en ? 'en' : 'pt-BR';
+  document.title = (en ? 'Pricing' : 'Preços') + ' · ' + brand.name;
+  document.getElementById('mark').textContent = brand.mark;
+  document.getElementById('brandName').textContent = brand.name;
+
+  function fillList(id, items) {
+    document.getElementById(id).innerHTML = items.map(function (t) {
+      return '<li>' + t + '</li>';
+    }).join('');
+  }
+
+  if (en) {
+    document.getElementById('navPricing').textContent = 'Pricing';
+    document.getElementById('navTerms').textContent = 'Terms';
+    document.getElementById('navPrivacy').textContent = 'Privacy';
+    document.getElementById('navRefund').textContent = 'Refunds';
+    document.getElementById('navStart').textContent = 'Start analysis';
+    document.getElementById('eyebrow').textContent = 'Competitive marketing intelligence';
+    document.getElementById('heroTitle').textContent = 'Simple pricing for clearer competitor insights';
+    document.getElementById('heroSub').textContent = brand.name + ' analyzes your website and competitors across Ads, SEO, and Brand — then lets you unlock deeper Pro reports or extra social channels.';
+    document.getElementById('freeTag').textContent = 'Free';
+    document.getElementById('freeTitle').textContent = 'Free analysis';
+    document.getElementById('freeBlurb').textContent = 'Instant starter report so you can see how the product works before paying.';
+    document.getElementById('freeCta').textContent = 'Run free analysis';
+    document.getElementById('proBadge').textContent = 'Most popular';
+    document.getElementById('proTag').textContent = 'One-time purchase';
+    document.getElementById('proTitle').textContent = 'Pro deep-channel analysis';
+    document.getElementById('proBlurb').textContent = 'Unlock a deeper dive on one channel (Google Ads, SEO, or Brand) with actionable competitor detail.';
+    document.getElementById('proCta').textContent = 'Buy Pro after free report';
+    document.getElementById('extrasTag').textContent = 'One-time purchase';
+    document.getElementById('extrasTitle').textContent = 'Extra channels pack';
+    document.getElementById('extrasBlurb').textContent = 'Add Meta Ads, Instagram, YouTube, and TikTok rankings to your free Ads + SEO + Brand report.';
+    document.getElementById('extrasCta').textContent = 'Unlock extras in chat';
+    document.getElementById('aboutTitle').textContent = 'What you are buying';
+    document.getElementById('aboutBody').innerHTML =
+      '<p><strong>' + brand.name + '</strong> is a competitive marketing analyst tool. You submit your website (and phone/email). We run a pipeline that identifies competitors and scores channels.</p>'
+      + '<p><strong>Free deliverables:</strong> client vs competitors overview for Google Ads, SEO, and Brand search, with estimated investment signals where available.</p>'
+      + '<p><strong>Pro ($' + prices.pro + '):</strong> one paid unlock for a selected channel. After payment via Paddle, your Pro analysis enters our queue and we follow up on your contact (typically within 24 hours) with a deeper report (campaign/creative patterns, ranking context, and recommended next tests).</p>'
+      + '<p><strong>Extra channels ($' + prices.extras + '):</strong> one paid unlock that immediately expands the chat report with Meta Ads, Instagram, YouTube, and TikTok rankings for the same client.</p>'
+      + '<p>Payments are processed securely by Paddle (USD). See our <a href="/refund">Refund Policy</a>, <a href="/terms">Terms of Service</a>, and <a href="/privacy">Privacy Notice</a>.</p>';
+    fillList('freeFeatures', [
+      'Website + competitor discovery',
+      'Google Ads ranking snapshot',
+      'SEO organic snapshot',
+      'Brand search snapshot',
+      'No credit card required'
+    ]);
+    fillList('proFeatures', [
+      'Deep analysis of 1 selected channel',
+      'Competitor creative / campaign context',
+      'Actionable questions unlocked in-product',
+      'Human follow-up delivery (≈24h)',
+      'Secure card checkout via Paddle'
+    ]);
+    fillList('extrasFeatures', [
+      'Meta Ads ranking unlock',
+      'Instagram ranking unlock',
+      'YouTube ranking unlock',
+      'TikTok ranking unlock',
+      'Shown inside the same chat report'
+    ]);
+    document.getElementById('siteFooter').innerHTML =
+      '<a href="/pricing">Pricing</a>'
+      + '<a href="/terms">Terms of Service</a>'
+      + '<a href="/privacy">Privacy Notice</a>'
+      + '<a href="/refund">Refund Policy</a>'
+      + '<a href="/">Home</a>';
+  } else {
+    document.getElementById('navPricing').textContent = 'Preços';
+    document.getElementById('navTerms').textContent = 'Termos';
+    document.getElementById('navPrivacy').textContent = 'Privacidade';
+    document.getElementById('navRefund').textContent = 'Reembolso';
+    document.getElementById('navStart').textContent = 'Começar análise';
+    document.getElementById('eyebrow').textContent = 'Inteligência de marketing competitivo';
+    document.getElementById('heroTitle').textContent = 'Preços claros para insights de concorrência';
+    document.getElementById('heroSub').textContent = 'O ' + brand.name + ' analisa seu site e concorrentes em Ads, SEO e Marca — e permite desbloquear relatórios Pro ou canais extras.';
+    document.getElementById('freeTag').textContent = 'Grátis';
+    document.getElementById('freeTitle').textContent = 'Análise gratuita';
+    document.getElementById('freeBlurb').textContent = 'Relatório inicial para você ver o produto antes de pagar.';
+    document.getElementById('freeCta').textContent = 'Rodar análise gratuita';
+    document.getElementById('proBadge').textContent = 'Mais pedido';
+    document.getElementById('proTag').textContent = 'Pagamento único';
+    document.getElementById('proTitle').textContent = 'Análise Pro de canal';
+    document.getElementById('proBlurb').textContent = 'Desbloqueie um mergulho profundo em um canal (Google Ads, SEO ou Marca) com detalhe acionável dos concorrentes.';
+    document.getElementById('proCta').textContent = 'Comprar Pro após o gratuito';
+    document.getElementById('extrasTag').textContent = 'Pagamento único';
+    document.getElementById('extrasTitle').textContent = 'Pacote canais extra';
+    document.getElementById('extrasBlurb').textContent = 'Adicione rankings de Meta Ads, Instagram, YouTube e TikTok ao relatório gratuito.';
+    document.getElementById('extrasCta').textContent = 'Desbloquear extras no chat';
+    document.getElementById('aboutTitle').textContent = 'O que você está comprando';
+    document.getElementById('aboutBody').innerHTML =
+      '<p><strong>' + brand.name + '</strong> é uma ferramenta de análise competitiva de marketing. Você envia o site (e WhatsApp/e-mail). Rodamos um pipeline que identifica concorrentes e pontua canais.</p>'
+      + '<p><strong>Entrega gratuita:</strong> visão cliente vs concorrentes em Google Ads, SEO e Marca, com sinais de investimento estimado quando disponíveis.</p>'
+      + '<p><strong>Pro (R$ ' + prices.pro + '):</strong> um desbloqueio pago de um canal escolhido. Após pagamento, a análise Pro entra na fila e fazemos follow-up no contato (em geral até 24h) com relatório mais profundo.</p>'
+      + '<p><strong>Canais extra (R$ ' + prices.extras + '):</strong> desbloqueio pago que amplia o relatório no chat com Meta Ads, Instagram, YouTube e TikTok.</p>'
+      + '<p>No Brasil o pagamento é via Mercado Pago. Veja <a href="/refund">Reembolso</a>, <a href="/terms">Termos</a> e <a href="/privacy">Privacidade</a>.</p>';
+    fillList('freeFeatures', [
+      'Descoberta de site + concorrentes',
+      'Snapshot Google Ads',
+      'Snapshot SEO orgânico',
+      'Snapshot busca de marca',
+      'Sem cartão no gratuito'
+    ]);
+    fillList('proFeatures', [
+      'Análise profunda de 1 canal',
+      'Contexto de criativos/campanhas',
+      'Perguntas Pro liberadas no produto',
+      'Entrega com follow-up (≈24h)',
+      'Checkout seguro (PIX/cartão)'
+    ]);
+    fillList('extrasFeatures', [
+      'Ranking Meta Ads',
+      'Ranking Instagram',
+      'Ranking YouTube',
+      'Ranking TikTok',
+      'Exibido no mesmo chat'
+    ]);
+    document.getElementById('siteFooter').innerHTML =
+      '<a href="/pricing">Preços</a>'
+      + '<a href="/terms">Termos de Uso</a>'
+      + '<a href="/privacy">Privacidade</a>'
+      + '<a href="/refund">Reembolso</a>'
+      + '<a href="/">Início</a>';
+  }
+
+  ['freeCur', 'proCur', 'extrasCur'].forEach(function (id) {
+    document.getElementById(id).textContent = prices.cur;
+  });
+  document.getElementById('proVal').textContent = String(prices.pro);
+  document.getElementById('extrasVal').textContent = String(prices.extras);
+  document.getElementById('freePer').textContent = prices.freeLabel;
+  document.getElementById('proPer').textContent = prices.proLabel;
+  document.getElementById('extrasPer').textContent = prices.extrasLabel;
+})();
+</script>
+</body>
+</html>

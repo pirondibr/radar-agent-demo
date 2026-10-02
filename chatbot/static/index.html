@@ -277,6 +277,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <div class="composer">
  <div class="legal-footer" id="legalFooter">
+  <a href="/pricing" target="_blank" rel="noopener noreferrer" data-legal="pricing">Pricing</a>
   <a href="/terms" target="_blank" rel="noopener noreferrer" data-legal="terms">Terms of Service</a>
   <a href="/privacy" target="_blank" rel="noopener noreferrer" data-legal="privacy">Privacy Notice</a>
   <a href="/refund" target="_blank" rel="noopener noreferrer" data-legal="refund">Refund Policy</a>
@@ -295,7 +296,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.93';
+const APP_VERSION = '1.5.94';
 
 /** Locale: winnertracker.com (or ?lang=en) → English / Winner Tracker */
 function detectLocale() {
@@ -346,6 +347,7 @@ const I18N = IS_EN ? {
   legalTerms: 'Terms of Service',
   legalPrivacy: 'Privacy Notice',
   legalRefund: 'Refund Policy',
+  legalPricing: 'Pricing',
 } : {
   ready: 'Pronto',
   topMeta: 'MVP Ads + SEO + Marca',
@@ -376,6 +378,7 @@ const I18N = IS_EN ? {
   legalTerms: 'Termos de Uso',
   legalPrivacy: 'Privacidade',
   legalRefund: 'Reembolso',
+  legalPricing: 'Preços',
 };
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
@@ -537,7 +540,12 @@ document.title = (VIDEO_MODE ? (IS_EN ? 'Video demo · ' : 'Demo vídeo · ') : 
     const lab = fab.querySelector('.wa-fab-label');
     if (lab) lab.textContent = I18N.waLabel;
   }
-  const legalMap = { terms: I18N.legalTerms, privacy: I18N.legalPrivacy, refund: I18N.legalRefund };
+  const legalMap = {
+    pricing: I18N.legalPricing,
+    terms: I18N.legalTerms,
+    privacy: I18N.legalPrivacy,
+    refund: I18N.legalRefund,
+  };
   document.querySelectorAll('[data-legal]').forEach((a) => {
     const key = a.getAttribute('data-legal');
     if (legalMap[key]) a.textContent = legalMap[key];
