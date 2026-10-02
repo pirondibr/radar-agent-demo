@@ -13,10 +13,10 @@ from typing import Any, Optional
 
 from mercadopago_client import load_order, save_order
 
-# Sandbox catalog created via Paddle MCP (override with env in live)
+# Live: set all via env. Sandbox defaults only used when PADDLE_ENV=sandbox.
 DEFAULT_PRICE_PRO = "pri_01m3ywxjq2sevxc9ydrp0ad5gn"
 DEFAULT_PRICE_EXTRAS = "pri_01m3ywxk2v8h34yz38k1mbg8m9"
-DEFAULT_CLIENT_TOKEN = "test_d7daca219bacd1660300a0318b0"
+DEFAULT_CLIENT_TOKEN_SANDBOX = "test_d7daca219bacd1660300a0318b0"
 
 PRO_PRICE_USD = float(os.environ.get("PRO_PRICE_USD", "29").strip() or "29")
 EXTRAS_PRICE_USD = float(os.environ.get("EXTRAS_PRICE_USD", "19").strip() or "19")
@@ -29,12 +29,21 @@ def paddle_api_key() -> str:
     )
 
 
+def paddle_env_flag() -> str:
+    return os.environ.get("PADDLE_ENV", os.environ.get("PADDLE_SANDBOX", "sandbox")).strip().lower()
+
+
 def paddle_client_token() -> str:
-    return (
+    token = (
         os.environ.get("PADDLE_CLIENT_TOKEN", "").strip()
         or os.environ.get("PADDLE_CLIENT_SIDE_TOKEN", "").strip()
-        or DEFAULT_CLIENT_TOKEN
     )
+    if token:
+        return token
+    # Never fall back to sandbox token when explicitly live
+    if paddle_env_flag() in ("live", "production", "0", "false", "no"):
+        return ""
+    return DEFAULT_CLIENT_TOKEN_SANDBOX
 
 
 def paddle_webhook_secret() -> str:
@@ -45,7 +54,7 @@ def paddle_webhook_secret() -> str:
 
 
 def paddle_sandbox() -> bool:
-    flag = os.environ.get("PADDLE_ENV", os.environ.get("PADDLE_SANDBOX", "sandbox")).strip().lower()
+    flag = paddle_env_flag()
     if flag in ("live", "production", "0", "false", "no"):
         return False
     token = paddle_client_token()
@@ -61,14 +70,14 @@ def paddle_configured() -> bool:
 def price_id_for_product(product: str) -> str:
     product = (product or "deep_channel").strip().lower()
     if product == "extras_pack":
-        return (
-            os.environ.get("PADDLE_PRICE_EXTRAS", "").strip()
-            or DEFAULT_PRICE_EXTRAS
-        )
-    return (
-        os.environ.get("PADDLE_PRICE_PRO", "").strip()
-        or DEFAULT_PRICE_PRO
-    )
+        env = os.environ.get("PADDLE_PRICE_EXTRAS", "").strip()
+        if env:
+            return env
+        return DEFAULT_PRICE_EXTRAS if paddle_sandbox() else ""
+    env = os.environ.get("PADDLE_PRICE_PRO", "").strip()
+    if env:
+        return env
+    return DEFAULT_PRICE_PRO if paddle_sandbox() else ""
 
 
 def amount_for_product(product: str) -> float:
