@@ -20,10 +20,11 @@ fbq('init', '2289325455219613');
 fbq('track', 'PageView');
 </script>
 <!-- End Meta Pixel Code -->
-<!-- OpenAI Ads Pixel — somente a página /47 -->
+<!-- OpenAI Ads Pixel — home do agente e página /47 -->
 <script>
 (function () {
-  if (!/^\/47\/?$/.test(location.pathname)) return;
+  var path = location.pathname.replace(/\/+$/, '') || '/';
+  if (path !== '/' && path !== '/47') return;
   !function(w,d,s,u){if(w.oaiq)return;var q=function(){q.q.push(arguments)};q.q=[];w.oaiq=q;var j=d.createElement(s);j.async=1;j.src=u;var f=d.getElementsByTagName(s)[0];f.parentNode.insertBefore(j,f)}(window,document,"script","https://bzrcdn.openai.com/sdk/oaiq.min.js");
   oaiq("init",{pixelId:"LpS3eYX3NmAuftchn5HVwA",debug:true});
 })();
@@ -278,7 +279,7 @@ src="https://www.facebook.com/tr?id=2289325455219613&ev=PageView&noscript=1"
 
 <script>
 /* Bump APP_VERSION a cada alteracao de UI/pipeline para detectar cache do browser */
-const APP_VERSION = '1.5.61';
+const APP_VERSION = '1.5.62';
 
 /** Captura origem do trafego (UTM / gclid / fbclid) e guarda na sessao. */
 function captureAttribution() {
